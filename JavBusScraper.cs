@@ -26,6 +26,9 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
     /// <summary>
     /// Finds a video on JavBus by its product code. JavBus exposes a
     /// canonical URL per code, so no search-result walking is needed.
+    /// Codes whose canonical form dropped a leading zero (SDMF-010 →
+    /// SDMF-10) are additionally retried in their padded spelling, because
+    /// JavBus indexes some labels only under the padded form.
     /// </summary>
     /// <param name="code">Product code, e.g. "MIAB-492".</param>
     /// <param name="ct">Cancellation token.</param>
@@ -40,6 +43,36 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
         }
 
         // Canonical detail page: https://www.javbus.com/<lang>/<CODE>
+        var video = await TryCodeAsync(keyword, ct).ConfigureAwait(false);
+        if (video is not null)
+        {
+            return video;
+        }
+
+        // Zero-padded retry: some labels are only indexed as "SDMF-010".
+        var padded = ToPaddedKeyword(code);
+        if (padded is not null && !padded.Equals(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.LogDebug("JavBus: '{Keyword}' not found; retrying padded form '{Padded}'", keyword, padded);
+            video = await TryCodeAsync(padded, ct).ConfigureAwait(false);
+            if (video is not null)
+            {
+                return video;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Fetches and parses a JavBus detail page for one spelling of the code,
+    /// treating age/bot walls and ID mismatches as misses.
+    /// </summary>
+    /// <param name="keyword">Code spelling to fetch ("SDMF-10" or "SDMF-010").</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The parsed video, or <c>null</c> when the page is not a match.</returns>
+    private async Task<JavVideo?> TryCodeAsync(string keyword, CancellationToken ct)
+    {
         var html = await GetHtmlAsync($"{keyword}", ct).ConfigureAwait(false);
         if (html is null)
         {
@@ -50,14 +83,48 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
         doc.LoadHtml(html);
 
         // Age gate or bot wall comes back as HTML without the info panel.
-        var title = SelectText(doc, "//h3|//div[contains(@class,'info')]//span[contains(@class,'header') and text()='ID:']/following-sibling::span");
         if (html.Contains("Age Verification", StringComparison.OrdinalIgnoreCase) || html.Contains("driver-verify", StringComparison.Ordinal))
         {
             Logger.LogDebug("JavBus: age/driver gate for '{Code}'", keyword);
             return null;
         }
 
-        return ParseVideoPage(doc, html);
+        var video = ParseVideoPage(doc, html);
+        if (video is not null)
+        {
+            // The page's own ID must match what we asked for — a soft-404
+            // page with generic content must not count as a hit.
+            var pageCode = JavCodeParser.Normalize(video.Code);
+            var wanted = JavCodeParser.Normalize(keyword);
+            if (pageCode.Length > 0 && wanted.Length > 0
+                && !pageCode.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+        }
+
+        return video;
+    }
+
+    /// <summary>
+    /// Builds the zero-padded spelling of a code when canonicalization
+    /// stripped a leading zero (user code "SDMF-010" → canonical keyword
+    /// "SDMF-10" → padded retry "SDMF-010"). Returns <c>null</c> when the
+    /// code has no such variant.
+    /// </summary>
+    /// <param name="code">Code in any spelling.</param>
+    /// <returns>The padded keyword, or <c>null</c> when there is none.</returns>
+    private static string? ToPaddedKeyword(string code)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(code, @"^([A-Za-z]+[0-9]*)-0+(\d+)$");
+        return match.Success
+            ? match.Groups[1].Value.ToUpperInvariant() + "-0" + match.Groups[2].Value
+            : null;
     }
 
     /// <summary>

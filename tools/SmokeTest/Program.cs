@@ -261,6 +261,12 @@ Console.WriteLine("== Cloudflare solved-page regression ==");
 Check(!Jellyfin.Plugin.JavOrganizer.SiteScraper.IsErrorTitle("ADN-115 Real Title"), "solved page title is not an error");
 Check(Jellyfin.Plugin.JavOrganizer.SiteScraper.IsErrorTitle("Just a moment..."), "interstitial title is an error");
 
+
+Console.WriteLine("== JavBus padded-code retry ==");
+Check(JavBusScraper_Tests.ToPaddedKeywordPublic("SDMF-010") == "SDMF-010", "padded keyword for SDMF-010");
+Check(JavBusScraper_Tests.ToPaddedKeywordPublic("SDMF-10") is null, "no padded variant for SDMF-10");
+Check(JavBusScraper_Tests.ToPaddedKeywordPublic("ABP-00123") == "ABP-0123", "padded keyword for ABP-00123");
+Check(JavBusScraper_Tests.ToPaddedKeywordPublic("T28-597") is null, "no padded variant for T28-597");
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -292,3 +298,14 @@ internal sealed class StubLogger : Microsoft.Extensions.Logging.ILogger<GenericS
 }
 
 
+
+
+/// <summary>Exposes private JavBus padded-keyword logic for the test suite.</summary>
+internal static class JavBusScraper_Tests
+{
+    internal static string? ToPaddedKeywordPublic(string code)
+    {
+        var method = typeof(JavBusScraper).GetMethod("ToPaddedKeyword", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        return method?.Invoke(null, [code]) as string;
+    }
+}
