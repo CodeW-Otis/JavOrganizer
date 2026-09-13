@@ -19,6 +19,7 @@
                         <button is="emby-button" type="button" id="CancelScanButton" class="block emby-button" style="margin-top: 0.6em; display: none;">
                             <span>Cancel Scan</span>
                         </button>
+                        <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
                         <div class="fieldDescription" id="ScanState">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
                     </div>
                     <div class="selectContainer">
@@ -257,16 +258,48 @@
             function updateScanState() {
                 ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State') }).then(function (state) {
                     var el = document.querySelector('#ScanState');
+                    var bar = document.querySelector('#ScanProgressBar');
                     setScanButtons(state.running);
                     if (state.running) {
                         var done = state.completed || 0;
                         var total = state.totalPending || 0;
                         var pct = total > 0 ? Math.round((done / total) * 100) : 0;
-                        el.textContent = (state.deep ? 'Deep re-scrape' : 'Scan') + ' running: ' +
-                            done + ' / ' + total + ' videos (' + pct + '%), ' +
-                            (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) + ' still missing…';
-                        document.querySelector('#ScanNowButton').querySelector('span').textContent = 'Scan Running… ' + pct + '%';
-                        document.querySelector('#DeepScanButton').querySelector('span').textContent = 'Scan Running… ' + pct + '%';
+
+                        // Elapsed + estimated remaining, so a slow batch never looks frozen.
+                        // startedAt arrives as ISO-UTC ("…Z"); Date.parse handles it exactly.
+                        var elapsedText = '';
+                        if (state.startedAt) {
+                            var startMs = Date.parse(state.startedAt);
+                            var elapsedMs = startMs > 0 ? Date.now() - startMs : 0;
+                            if (elapsedMs > 0 && elapsedMs < 7 * 24 * 3600 * 1000) {
+                                var eMin = Math.floor(elapsedMs / 60000);
+                                var eSec = Math.floor((elapsedMs % 60000) / 1000);
+                                elapsedText = eMin > 0 ? eMin + 'm ' + eSec + 's' : eSec + 's';
+                                if (done > 0) {
+                                    var perItemMs = elapsedMs / done;
+                                    var remainMin = Math.round(perItemMs * (total - done) / 60000);
+                                    elapsedText += ' elapsed' + (remainMin >= 1 ? ', ~' + remainMin + ' min left' : '');
+                                }
+                            }
+                        }
+
+                        var mode = state.deep ? 'Deep re-scrape' : 'Scan';
+                        var dots = '.'.repeat(1 + (Math.floor(Date.now() / 600) % 3));
+                        el.textContent = mode + ' running' + dots + ' ' +
+                            done + ' / ' + total + ' videos (' + pct + '%) — ' +
+                            (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
+                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '');
+                        el.style.color = '';
+
+                        if (bar) {
+                            bar.style.display = '';
+                            bar.max = total;
+                            bar.value = done;
+                        }
+
+                        var btnLabel = 'Scan Running… ' + pct + '%';
+                        document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
+                        document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
                         if (!scanStateTimer) {
                             scanStateTimer = setInterval(updateScanState, 3000);
                         }
@@ -275,11 +308,17 @@
                             clearInterval(scanStateTimer);
                             scanStateTimer = null;
                         }
+                        if (bar) {
+                            bar.style.display = 'none';
+                        }
+
                         if ((state.completed || 0) > 0) {
-                            el.textContent = 'Last scan: ' + (state.completed || 0) + ' processed, ' +
+                            el.style.color = '#4caf50';
+                            el.textContent = '✓ Last scan: ' + (state.completed || 0) + ' processed, ' +
                                 (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
                                 ' still without metadata. Click Scan to run another pass.';
                         } else {
+                            el.style.color = '';
                             el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now. Deep Re-scrape purges the cache and re-scrapes everything.';
                         }
                     }
