@@ -1,18 +1,21 @@
 <div align="center">
 
-<img src="Logo.png" alt="JavOrganizer logo" width="180">
+<img src="https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/Logo.png" alt="JavOrganizer Logo" width="200">
 
 # JavOrganizer
 
-**JAV metadata for Jellyfin from up to 18 websites, scraped in parallel
-with an advanced anti-ban system.**
+**🎬 JAV metadata for Jellyfin from up to 18 websites, scraped in parallel with an advanced anti-ban system.**
+
+<br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
 [![Release](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-green.svg)](#build-matrix--pick-the-build-matching-your-server)
-[![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-purple.svg)](#build-matrix--pick-the-build-matching-your-server)
+[![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
+[![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![Stars](https://img.shields.io/github/stars/CodeW-Otis/JavOrganizer.svg?style=social)](https://github.com/CodeW-Otis/JavOrganizer/stargazers)
+
+<br>
 
 ### ⚡ One-line install — copy this into Jellyfin:
 
@@ -20,13 +23,35 @@ with an advanced anti-ban system.**
 https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
 ```
 
+> 📋 **Click the copy button** (top-right of the box above) then paste into **Dashboard → Plugins → Repositories → ➕**
+
 **[→ Full install guide below](#-installation)** · [Quick Start (5 min)](QUICKSTART.md) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
-**⭐ Star this repo if it organizes your library — it really helps others find it.**
+**⭐ If this plugin organizes your library, star the repo — it really helps others find it!**
 
 </div>
 
 ---
+
+### ✨ Key Features
+
+<table>
+  <tr>
+    <td align="center" width="33%">🌐 <strong>18 Sources</strong><br>Scrapes sites in parallel and merges the best data</td>
+    <td align="center" width="33%">🛡️ <strong>Anti-Ban</strong><br>Rotating fingerprints, jitter, backoff, circuit breakers</td>
+    <td align="center" width="33%">🌍 <strong>English First</strong><br>Latin-script titles win over Japanese-only variants</td>
+  </tr>
+  <tr>
+    <td align="center">🖼️ <strong>Rich Media</strong><br>Cover art + 10–20 scene backdrops per video</td>
+    <td align="center">👥 <strong>Gender-Aware</strong><br>Separate actress/actor credits with collections</td>
+    <td align="center">☁️ <strong>Cloudflare Bypass</strong><br>Auto-managed FlareSolverr lifecycle</td>
+  </tr>
+  <tr>
+    <td align="center">⏰ <strong>Auto Scanning</strong><br>Startup + 6-hour scheduled + on-demand scans</td>
+    <td align="center">💾 <strong>Smart Cache</strong><br>30-day TTL with thin-record self-healing</td>
+    <td align="center">🔧 <strong>Jellyfin 10.8–12.0</strong><br>One optimized build per server line</td>
+  </tr>
+</table>
 
 JavOrganizer identifies Japanese adult video files by the product code in
 their file name (for example `SSIS-406.mp4`), scrapes up to **18 websites
@@ -50,6 +75,7 @@ can start with the server and stop with the server.
 Supports **Jellyfin 10.8, 10.9, 10.10, 10.11 and 12.0** with one build per
 Jellyfin line.
 
+> [!NOTE]
 > **Live-tested end to end** on a real Jellyfin 12.0.0 server (Windows,
 > 1204-video library, managed FlareSolverr): plugin load, startup auto-scan,
 > all API endpoints, config hot-reload, a full deep re-scrape, multi-site
@@ -58,7 +84,10 @@ Jellyfin line.
 
 ---
 
-## Contents
+## 📖 Contents
+
+<details>
+<summary><strong>Click to expand full table of contents</strong></summary>
 
 1. [Why some videos showed only a title — and how it is fixed](#why-some-videos-showed-only-a-title--and-how-it-is-fixed)
 2. [How it works](#how-it-works)
@@ -81,9 +110,11 @@ Jellyfin line.
 19. [Verified on a live server](#verified-on-a-live-server)
 20. [Changelog](#changelog)
 
+</details>
+
 ---
 
-## Why some videos showed only a title — and how it is fixed
+## 🔍 Why some videos showed only a title — and how it is fixed
 
 Previous versions could leave a video showing nothing but its file name, a
 Japanese-only title, or no cover. Six separate causes, all fixed:
@@ -128,12 +159,13 @@ Japanese-only title, or no cover. Six separate causes, all fixed:
    a 60-second solve budget, and the merge prefers Latin-script titles,
    cast names and studios whenever any site provides them.
 
-**If you are upgrading from 1.2.0:** open the plugin configuration and
+> [!IMPORTANT]
+> **If you are upgrading from 1.2.0:** open the plugin configuration and
 press **Deep Re-scrape Everything** once. It re-scrapes every video
 through the full 18-site stack, repairing old partial data. The pass is
 cancel-safe: it purges each item's cache only when that item's turn comes.
 
-## How it works
+## ⚙️ How it works
 
 ```
 filename ──► JavCodeParser.ExtractCode ──► "ABP-123"
@@ -168,7 +200,7 @@ filename ──► JavCodeParser.ExtractCode ──► "ABP-123"
                 Primary cover + scene Backdrops
 ```
 
-## The 18 sites
+## 🌐 The 18 sites
 
 Every enabled site is scraped **simultaneously** per code and the results
 are merged in priority order (richer sources first, later sites fill the
@@ -211,7 +243,7 @@ always-on baseline source.
 - **Ban-recovery**: turn a banned site off, raise the cap — the remaining
   sites absorb the work.
 
-## Advanced anti-ban & anti-detect system
+## 🛡️ Advanced anti-ban & anti-detect system
 
 Scraping 18 sites is itself the first line of defense: each individual
 site sees a small fraction of your traffic. On top of that:
@@ -246,7 +278,7 @@ site sees a small fraction of your traffic. On top of that:
    (banned, blocked, dead) never contributes a "not found" verdict, so
    transient failures never poison the negative cache.
 
-## Scanning: automatic and manual
+## 🔄 Scanning: automatic and manual
 
 **Automatic:**
 
@@ -271,7 +303,7 @@ site sees a small fraction of your traffic. On top of that:
   and the recommended one-time action after upgrading from 1.2.0.
 - **Cancel Scan** — stops a running pass at any time.
 
-## Filename conventions
+## 📁 Filename conventions
 
 The parser looks for the pattern **2–6 letters + optional hyphen + 2–5 digits**,
 case-insensitive, anywhere in the file name:
@@ -323,7 +355,8 @@ Then in Jellyfin:
 
 That's it — future releases arrive through the same catalog with one click.
 
-> 💡 **Which Jellyfin do I have?** Look at the bottom of the dashboard
+> [!TIP]
+> **Which Jellyfin do I have?** Look at the bottom of the dashboard
 > sidebar, or **Dashboard → Plugins** after install — the plugin shows its
 > version there. The catalog entry matching your server is the right one.
 
@@ -373,7 +406,7 @@ Jellyfin server itself; you do not need to install anything extra.)
 **Next step:** the [5-minute Quick Start](QUICKSTART.md) — library
 settings, file naming and the optional FlareSolverr setup.
 
-## Library setup
+## 📂 Library setup
 
 1. Create a library with content type **Movies** pointing at your collection.
 2. Open **Library settings → Metadata → Metadata downloaders**:
@@ -389,7 +422,7 @@ settings, file naming and the optional FlareSolverr setup.
    `No search results for '<code>'`. The scheduled scan retries them every
    6 hours.
 
-## Configuration
+## ⚙️ Configuration
 
 Open **Dashboard → Plugins → JavOrganizer** in the web client. All settings
 take effect **immediately** — no server restart needed (the FlareSolverr
@@ -417,7 +450,7 @@ Settings are persisted in
 `{data}/plugins/configurations/Jellyfin.Plugin.JavOrganizer.xml` and can also
 be edited by hand while the server is stopped.
 
-## FlareSolverr lifecycle (auto start/stop)
+## ☁️ FlareSolverr lifecycle (auto start/stop)
 
 Set **FlareSolverr executable path** (for example
 `C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe`) and the plugin
@@ -434,7 +467,7 @@ manages the service for you:
 If you prefer running FlareSolverr yourself (as a service, in Docker, etc.),
 leave the executable path empty and just set the URL.
 
-## Cover art and backdrops
+## 🖼️ Cover art and backdrops
 
 Images are delivered by the plugin's image provider in two steps:
 
@@ -458,7 +491,7 @@ Notes:
 - To re-fetch images for one item: refresh it with *Replace all metadata*.
   To re-fetch everything: run **Deep Re-scrape Everything**.
 
-## How metadata is cached
+## 💾 How metadata is cached
 
 Scraped records are stored as one JSON file per product code under
 `{data}/plugins/Jellyfin.Plugin.JavOrganizer/cache/` (for example
@@ -482,7 +515,7 @@ On a cache hit no network request is made at all. An in-memory
 rebuilds itself lazily after a server restart. Delete the cache folder (or
 run **Deep Re-scrape Everything**) to force a full re-scrape.
 
-## Collections
+## 📚 Collections
 
 Collections (daily task, also runnable on demand — *Update JavOrganizer
 Collections* in Dashboard → Scheduled Tasks):
@@ -504,7 +537,7 @@ Every collection is ordered by release date (newest first) and refreshes
 its membership on each run. People need at least *Min videos per person
 collection* (default 2) appearances to get their own collection.
 
-## Automatic cache cleanup
+## 🧹 Automatic cache cleanup
 
 The plugin registers a scheduled task — **"Clean JavOrganizer Cache"**
 (Dashboard → Scheduled Tasks, category *Library*) — that runs daily at 04:00
@@ -518,7 +551,7 @@ by default and can also be run on demand. It removes:
 The library query is only an optimization: if it fails for any reason, the
 task skips orphan removal that run rather than risk deleting live records.
 
-## Building from source and running tests
+## 🔨 Building from source and running tests
 
 Requires the **.NET SDK** for the target line (SDK 6 for the 10.8 build, 8 for
 10.9/10.10, 9 for 10.11, 10 for 12.0). The simplest path is the helper script,
@@ -554,7 +587,7 @@ dotnet run --project tools/SmokeTest -c Release
 Package versions are pinned to the exact Jellyfin releases each target was
 verified against (see `Jellyfin.Plugin.JavOrganizer.csproj`).
 
-## Project layout
+## 🗂️ Project layout
 
 | File | Role |
 |---|---|
@@ -589,7 +622,7 @@ verified against (see `Jellyfin.Plugin.JavOrganizer.csproj`).
 | `manifest.json` | Plugin-repository manifest |
 | `dist/` | Release builds: one folder + zip + `.sha256` per Jellyfin line |
 
-## Troubleshooting
+## ❓ Troubleshooting
 
 **Plugin does not load / `Loaded plugin` line missing.**
 The build does not match the server line — use the matching folder from the
@@ -649,7 +682,7 @@ Once*, and enable more sites — spreading the work over more sites is the
 fastest safe speedup. Or lower *Delay Between Requests* (at your own risk
 of bans).
 
-## Compatibility notes
+## 🔗 Compatibility notes
 
 - One build per Jellyfin line is **required**: Jellyfin's
   `MediaBrowser.Controller/Model/Common` assemblies carry a distinct
@@ -671,7 +704,7 @@ of bans).
   work on every supported Jellyfin web client. On Jellyfin 12 the page is
   served at `/web/ConfigurationPage?name=JavOrganizer`.
 
-## Verified on a live server
+## ✅ Verified on a live server
 
 v1.3.0 was tested end to end against a real Jellyfin **12.0.0** server on
 Windows (data dir `%LocalAppData%\Jellyfin`, managed FlareSolverr at
@@ -716,7 +749,7 @@ All five targets (10.8/net6.0, 10.9, 10.10, 10.11/net9.0, 12.0/net10.0)
 build with **0 warnings / 0 errors**, and the **82-check** test suite
 passes.
 
-## Changelog
+## 📋 Changelog
 
 ### 1.3.0
 
@@ -762,6 +795,16 @@ passes.
 
 ---
 
-*JavOrganizer is a metadata scraper and is not affiliated with Jellyfin or
-any of the scraped sites. Scrape responsibly: keep the request delay enabled
-for large libraries, and respect each site's terms.*
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/Logo.png" alt="JavOrganizer" width="60">
+
+**[📖 Quick Start](QUICKSTART.md)** · **[🤝 Contributing](CONTRIBUTING.md)** · **[🛡️ Security](SECURITY.md)** · **[📜 Code of Conduct](CODE_OF_CONDUCT.md)** · **[⚖️ License](LICENSE)**
+
+<sub>JavOrganizer is a metadata scraper and is not affiliated with Jellyfin or any of the scraped sites.<br>Scrape responsibly: keep the request delay enabled for large libraries, and respect each site's terms.</sub>
+
+<sub>Made with ❤️ for the Jellyfin community</sub>
+
+<a href="#javorganizer">⬆ Back to top</a>
+
+</div>
