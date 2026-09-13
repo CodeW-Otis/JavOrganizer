@@ -1,0 +1,99 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Jellyfin ${{ matrix.jf-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - jf-version: "10.8"
+            dotnet: "6.0.x"
+          - jf-version: "10.9"
+            dotnet: "8.0.x"
+          - jf-version: "10.10"
+            dotnet: "8.0.x"
+          - jf-version: "10.11"
+            dotnet: "9.0.x"
+          - jf-version: "12.0"
+            dotnet: "10.0.x"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ matrix.dotnet }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+
+      - name: Build Jellyfin ${{ matrix.jf-version }} target
+        run: >
+          dotnet build Jellyfin.Plugin.JavOrganizer.csproj
+          -c Release
+          -p:JellyfinVersion=${{ matrix.jf-version }}
+          --nologo
+          -warnaserror
+
+      - name: Verify zero warnings
+        if: matrix.jf-version == '12.0'
+        run: |
+          output=$(dotnet build Jellyfin.Plugin.JavOrganizer.csproj -c Release -p:JellyfinVersion=12.0 --nologo 2>&1)
+          if echo "$output" | grep -q "warning"; then
+            echo "::error::Build produced warnings"
+            exit 1
+          fi
+
+  test:
+    name: Offline test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Run the 80-check suite
+        run: dotnet run --project tools/SmokeTest -c Release
+
+      - name: Fail on test failures
+        run: dotnet run --project tools/SmokeTest -c Release | tee test-output.txt && ! grep -q "FAIL" test-output.txt
+
+  release-build:
+    name: Release artifacts (all five lines)
+    runs-on: windows-latest
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET (all SDKs)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Build every line
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JavOrganizer-v${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          retention-days: 30
