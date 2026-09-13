@@ -1,13 +1,13 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/Logo.png" width="120" alt="JavOrganizer Logo" />
   <h1>Quick Start Guide</h1>
-  <p><em>5 minutes to a fully scraped and organized library.</em></p>
+  <p><em>Get your library organized in a few minutes.</em></p>
   <img src="https://img.shields.io/badge/Time-5%20minutes-brightgreen" alt="Estimated Time: 5 minutes" />
 </div>
 
 ---
 
-This guide takes you from zero to a complete, organized JAV library in Jellyfin. For the full feature reference, see the [main README](README.md).
+This quick guide covers setting up JavOrganizer in Jellyfin. For full details, check out the [main README](README.md).
 
 > [!NOTE]
 > **Prerequisites**
@@ -18,7 +18,7 @@ This guide takes you from zero to a complete, organized JAV library in Jellyfin.
 
 ## 1️⃣ Install the plugin
 
-**Fastest — add the plugin repository (30 seconds):**
+**Quickest method (via repository):**
 
 Copy this URL:
 
@@ -28,9 +28,9 @@ https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
 
 > 📋 **Click the copy button** (top-right of the box above) to copy the URL to your clipboard.
 
-In Jellyfin: **Dashboard → Plugins → Repositories → ➕** → paste → Save → **Dashboard → Plugins → Catalog** → **Install** *JavOrganizer* (pick the entry matching your Jellyfin version) → restart when prompted.
+In Jellyfin: go to **Dashboard → Plugins → Repositories → ➕**, paste the URL, and click Save. Then go to **Dashboard → Plugins → Catalog**, find **JavOrganizer**, install the version matching your Jellyfin install, and restart when prompted.
 
-**Alternative — manual download** from [Releases](../../releases/latest), picking the zip matching your Jellyfin version (this matters, a mismatched build will not load):
+**Manual installation (requires matching your Jellyfin version):**
 
 | Your Jellyfin | Download |
 |---|---|
@@ -40,9 +40,9 @@ In Jellyfin: **Dashboard → Plugins → Repositories → ➕** → paste → Sa
 | 10.9.x | `JavOrganizer-109-v1.3.0.0.zip` |
 | 10.8.x | `JavOrganizer-108-v1.3.0.0.zip` |
 
-Grab it from the [Releases](../../releases) page, then:
+Grab the correct zip from the [Releases](../../releases/latest) page, then:
 
-1. Extract the zip **contents** into `{Jellyfin data}/plugins/JavOrganizer/`
+1. Extract the zip **contents** directly into `{Jellyfin data}/plugins/JavOrganizer/`
    (Windows: `%LocalAppData%\Jellyfin\plugins\JavOrganizer\` — Linux: `/var/lib/jellyfin/plugins/JavOrganizer/`).
 2. Restart Jellyfin.
 3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.3.0* is listed.
@@ -50,94 +50,94 @@ Grab it from the [Releases](../../releases) page, then:
 > [!CAUTION]
 > **Critical Step:** Make sure you extract the zip contents *into* the `JavOrganizer` folder, not a subfolder inside it.
 
-✅ **You should see:** In **Dashboard → Plugins**, *JavOrganizer 1.3.0* is listed and active.
+✅ **Success check:** JavOrganizer 1.3.0 should now show up in **Dashboard → Plugins**.
 
 ---
 
 ## 2️⃣ Create the library
 
-1. **Dashboard → Libraries → Add Media Library**.
-2. Content type: **Movies**. Point it at your folder.
+1. Go to **Dashboard → Libraries → Add Media Library**.
+2. Set Content type to **Movies** and point it at your folder.
 3. Under **Library settings → Metadata → Metadata downloaders**:
    - Move **JavOrganizer** to the top.
-   - **Disable TMDb and every other fetcher** (they can't match JAV files and only slow the scan down).
-4. Under **Images**, keep only the fetchers you want — JavOrganizer supplies the cover (Primary) and scene screenshots (Backdrop).
+   - **Disable TMDb and other fetchers** (they won't match these files and just slow things down).
+4. Under **Images**, keep only the fetchers you want. JavOrganizer handles covers (Primary) and scene screenshots (Backdrop).
 5. Save and scan the library.
 
-✅ **You should see:** A new library in your Home screen starting to scan your media files.
+✅ **Success check:** The new library will appear on your Home screen and start scanning.
 
 ---
 
 ## 3️⃣ (Recommended) Set up Cloudflare bypass
 
-Several sources (JavLibrary — the main English-title source — JavDB, MissAV) sit behind Cloudflare. Without a bypass they will be skipped and your titles may fall back to other sites' data.
+Several metadata sources sit behind Cloudflare. Without a bypass, they will be skipped, which might result in missing data.
 
-> **FlareSolverr is a separate program — it is NOT included in the plugin zip.** Full step-by-step install instructions: see the **[FlareSolverr install guide](README.md#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)** in the main README.
+> **FlareSolverr is a separate program — it is NOT included in the plugin zip.** For full step-by-step install instructions, see the **[FlareSolverr install guide](README.md#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)** in the main README.
 
 **Short version:**
 
 1. Install [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr):
-   - **Windows**: download `flaresolverr_windows_x64.zip` from its [releases page](https://github.com/FlareSolverr/FlareSolverr/releases), extract to e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\` — do **not** run it manually; the plugin will manage it.
+   - **Windows**: download `flaresolverr_windows_x64.zip` from its [releases page](https://github.com/FlareSolverr/FlareSolverr/releases), extract to somewhere like `C:\Users\<you>\AppData\Local\FlareSolverr\`. Do **not** run it manually; the plugin can manage it.
    - **Docker**: `docker run -d --name flaresolverr -p 8191:8191 --restart unless-stopped ghcr.io/flaresolverr/flaresolverr:latest`
-2. **Dashboard → Plugins → JavOrganizer**:
+2. Configure in **Dashboard → Plugins → JavOrganizer**:
    - **FlareSolverr URL**: `http://localhost:8191/v1`
-   - **FlareSolverr Executable Path**: the full path to `flaresolverr.exe` (leave empty if you run it in Docker) — the plugin then starts and stops it together with Jellyfin.
+   - **FlareSolverr Executable Path**: the full path to `flaresolverr.exe` (leave empty if using Docker). The plugin will start and stop it alongside Jellyfin.
 
 > [!TIP]
-> If you are on Windows, providing the executable path lets JavOrganizer manage FlareSolverr for you automatically!
+> If you're on Windows, setting the executable path lets JavOrganizer manage FlareSolverr for you.
 
-✅ **You should see:** A successful connection to FlareSolverr without errors in the Jellyfin logs when testing or scraping.
+✅ **Success check:** Jellyfin logs shouldn't show FlareSolverr connection errors during a scan.
 
 ---
 
-## 4️⃣ Check the file naming
+## 4️⃣ Check file naming
 
-The plugin identifies videos by the product code in the file name:
+The plugin uses product codes in the filename to identify videos:
 
 - ✅ **Works**: `SSIS-406.mp4`, `abp982.mp4`, `[IPX-177] Title.mp4`, `Movie.FHD1080.ABP-123.mp4`, `IPX-1234_uncensored.mp4`
-- ❌ **Won't scrape**: `FC2-PPV-1234567.mp4` (unsupported), files with no letter+digits code at all.
+- ❌ **Won't scrape**: `FC2-PPV-1234567.mp4` (unsupported source), files without a standard letter+digits code.
 
-Zero-padded variants (`ABP-00123`) are normalized automatically.
+Zero-padded variants (`ABP-00123`) are handled automatically.
 
-✅ **You should see:** Your video filenames containing their respective product codes clearly separated or easily identifiable.
+✅ **Success check:** Your filenames contain clear product codes.
 
 ---
 
 ## 5️⃣ Run the first scan
 
-Open **Dashboard → Plugins → JavOrganizer** and press:
+Go to **Dashboard → Plugins → JavOrganizer**:
 
-1. **Scan Library Now** — scrapes everything missing metadata. Live progress is shown right on the page.
-2. If anything looks incomplete (Japanese-only title, missing cover), press **Deep Re-scrape Everything** once — it re-scrapes every video through all 18 sites with fresh data.
+1. Click **Scan Library Now** to scrape missing metadata. Progress is shown on the page.
+2. If anything is missing (like localized titles or covers), try **Deep Re-scrape Everything** once to force a fresh scrape across all sources.
 
-That's it. From now on:
+After this:
 
-- New files are scraped automatically when the library scans.
-- A scheduled task re-checks for unscraped/failed items every 6 hours.
-- One collection per actress/actor builds itself daily (plus Most Viewed / Most Liked rankings) under **Dashboard → Scheduled Tasks → Update JavOrganizer Collections**.
+- New files are scraped automatically during normal library scans.
+- A scheduled task checks for unscraped or failed items every 6 hours.
+- Actor collections and rankings update daily via the Scheduled Task **Update JavOrganizer Collections**.
 
-✅ **You should see:** Covers, localized titles, metadata, and actors magically appearing in your Jellyfin library!
+✅ **Success check:** Covers, titles, metadata, and actors will start populating in your Jellyfin library.
 
 ---
 
-## 6️⃣ Tune it (optional)
+## 6️⃣ Tune settings (optional)
 
-| Setting | Default | Raise it when… |
+| Setting | Default | When to increase |
 |---|---|---|
-| Parallel Scrapes | 4 | you want a faster first fill |
-| Max Sites Scraped at Once | 8 | you want maximum metadata per video |
-| Delay Between Requests | 500 ms | — lower only if you accept ban risk |
+| Parallel Scrapes | 4 | To speed up the initial library scan |
+| Max Sites Scraped at Once | 8 | To fetch more metadata per video |
+| Delay Between Requests | 500 ms | Only lower this if you accept the risk of IP bans |
 
-✅ **You should see:** Performance matching your preferences and hardware limits.
+✅ **Success check:** Scrapes run at a speed that works for your setup.
 
 ---
 
 ## 🛠️ Troubleshooting
 
-- **Plugin won't load** → wrong build for your Jellyfin line (step 1).
-- **Japanese titles / missing covers** → FlareSolverr not running or not configured (step 3), then press Deep Re-scrape.
-- **A few items never scrape** → the code genuinely doesn't exist on any enabled site; check Debug logs for `No search results for '<code>'`.
-- **Everything else** → the [Troubleshooting](README.md#troubleshooting) section of the README.
+- **Plugin won't load** → You might have the wrong build for your Jellyfin version (see step 1).
+- **Japanese titles / missing covers** → FlareSolverr might not be running or configured (see step 3). Try a Deep Re-scrape afterward.
+- **A few items never scrape** → The code might not exist on the enabled sites. Check Debug logs for `No search results for '<code>'`.
+- **Everything else** → Check the [Troubleshooting](README.md#troubleshooting) section of the README.
 
 ---
 

@@ -4,13 +4,15 @@
   <h1>🤝 Code of Conduct</h1>
 </div>
 
-This Code of Conduct applies to all project spaces, including issues, pull requests, and discussions, as well as in public spaces when an individual is representing the project or its community.
+Hey there! Welcome to the JavOrganizer community. 
+
+Whether you're opening an issue, submitting a pull request, or chatting in discussions, we want everyone to feel comfortable and respected here. This Code of Conduct applies to all of our project spaces, and anywhere you might be representing the project.
 
 ---
 
 ## Our Pledge
 
-In the interest of fostering an open and welcoming environment, we as contributors and maintainers pledge to make participation in our project and community a harassment-free experience for everyone.
+We want to build an open, welcoming, and friendly environment. As contributors and maintainers, we pledge to make participating in our project a safe and harassment-free experience for everyone.
 
 ---
 
@@ -37,13 +39,13 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 > [!IMPORTANT]
-> Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by contacting the repository maintainers via a private GitHub message. All complaints will be reviewed.
+> If you run into any abusive, harassing, or otherwise unacceptable behavior, please don't hesitate to reach out. You can report it by sending a private message to the maintainers on GitHub. We promise to review and address all complaints fairly and confidentially.
 
 ---
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 1.4.
+This document is based on the [Contributor Covenant](https://www.contributor-covenant.org), version 1.4. Thanks for helping us keep this community awesome!
 
 ---
 
