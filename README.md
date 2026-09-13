@@ -10,7 +10,7 @@ with an advanced anti-ban system.**
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-green.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-purple.svg)](#build-matrix--pick-the-build-matching-your-server)
 
-[Install](#installation) · [Quick start](#library-setup) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+[Install](#installation) · [Quick Start guide](QUICKSTART.md) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
 </div>
 
