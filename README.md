@@ -99,7 +99,7 @@ Jellyfin line.
 8. [☁️ FlareSolverr — what it is and how to install it (step by step)](#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)
 9. [📂 Library setup](#-library-setup)
 10. [Configuration](#configuration)
-11. [FlareSolverr lifecycle (auto start/stop)](#flaresolverr-lifecycle-auto-startstop)
+11. [☁️ FlareSolverr lifecycle (auto start/stop) — **the most important step**](#️-flaresolverr-lifecycle-auto-startstop--the-most-important-step-to-unlock-the-full-plugin)
 12. [🖼️ Cover art and backdrops](#️-cover-art-and-backdrops)
 13. [How metadata is cached](#how-metadata-is-cached)
 14. [Collections](#collections)
@@ -548,25 +548,57 @@ Settings are persisted in
 `{data}/plugins/configurations/Jellyfin.Plugin.JavOrganizer.xml` and can also
 be edited by hand while the server is stopped.
 
-## ☁️ FlareSolverr lifecycle (auto start/stop)
+## ☁️ FlareSolverr lifecycle (auto start/stop) — **the most important step to unlock the full plugin**
 
-> The full step-by-step install guide lives in the section above:
+> [!IMPORTANT]
+> **This is the step that decides whether the plugin reaches its full
+> potential.** Without FlareSolverr the plugin still works — but the
+> Cloudflare-walled sites (**JavLibrary, JavDB, MissAV** — the main
+> *English-title* sources) get skipped, and your items end up with thinner
+> metadata and possibly non-English titles. **Installing it takes ~2
+> minutes.** Full instructions:
 > **[FlareSolverr — what it is, and how to install it](#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)**.
 
-Set **FlareSolverr executable path** (for example
-`C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe`) and the plugin
-manages the service for you:
+### The two settings that matter
 
-- **Server starts** → the plugin kills any orphaned FlareSolverr left over
-  from a crashed run, launches a fresh instance, and waits for its health
-  endpoint before scans need it.
-- **Server stops** → the plugin kills the FlareSolverr process tree, so
-  nothing is left running on the machine.
-- The **FlareSolverr URL** must still be set (e.g. `http://localhost:8191/v1`)
-  so scrapers know where to send fallback requests.
+Open **Dashboard → Plugins → JavOrganizer** and set **both**:
 
-If you prefer running FlareSolverr yourself (as a service, in Docker, etc.),
-leave the executable path empty and just set the URL.
+| Setting | Value | Why |
+|---|---|---|
+| **FlareSolverr URL** | `http://localhost:8191/v1` | Tells the scrapers where to send challenge requests. **Required for the bypass to work.** |
+| **FlareSolverr Executable Path** | e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe` | Lets the plugin **own the lifecycle** — start with Jellyfin, stop with Jellyfin. **Leave empty if FlareSolverr runs in Docker** (the container already manages it). |
+
+### What happens automatically once both are set
+
+| Event | The plugin does this — you do nothing |
+|---|---|
+| 🟢 **Jellyfin starts** | Kills any orphaned FlareSolverr left over from a crashed run → launches a fresh instance → waits for its health endpoint before scans need it |
+| 🔥 **A site challenges a request** | One shared solve through FlareSolverr's real browser → the clearance cookie + matching user agent are adopted → every following request goes **direct at full speed** |
+| 🔴 **Jellyfin stops** | Kills the FlareSolverr process tree — nothing keeps running on your machine |
+
+### Verify it is working
+
+Start a scan (or restart Jellyfin) and check the log at Debug level for:
+
+```
+JavOrganizer.Plugin: "JavLibrary": FlareSolverr fetched '…' and granted direct access
+```
+
+That line means a Cloudflare challenge was solved and direct access was
+granted — English titles are now flowing in.
+
+### Prefer to run FlareSolverr yourself?
+
+No problem — as a Windows service, in Docker, on another machine: leave the
+**Executable Path empty**, just set the **URL** (e.g.
+`http://192.168.1.50:8191/v1` for a remote host). The plugin detects and
+uses it on demand either way.
+
+> [!TIP]
+> Crashed FlareSolverr with a `chromedriver` permission error? Kill orphaned
+> `flaresolverr`/`chromedriver` processes in Task Manager, delete the
+> contents of `%AppData%\undetected_chromedriver\`, and restart — the
+> plugin's orphan reaper also handles this automatically on boot.
 
 ## 🖼️ Cover art and backdrops
 
