@@ -355,17 +355,19 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
     /// <summary>
     /// Reports whether a cached record's title is in a different script
-    /// than the configured language requests (e.g. a Japanese-only title
-    /// while the plugin language is English), meaning one re-scrape could
-    /// upgrade it. The 6-hour freshness gate (the same one used for thin
-    /// records) throttles how often that retry happens.
+    /// than the configured language requests (e.g. a Japanese title while
+    /// the plugin language is English), meaning one re-scrape could
+    /// upgrade it. Even a single CJK character qualifies — an
+    /// English-language library's titles should have none. The 6-hour
+    /// freshness gate (the same one used for thin records) throttles how
+    /// often that retry happens.
     /// </summary>
     private static bool NeedsLanguageRetry(JavVideo video)
     {
         var language = Plugin.EffectiveConfiguration.Language;
         if (string.IsNullOrWhiteSpace(language) || language.StartsWith("en", StringComparison.OrdinalIgnoreCase))
         {
-            return CjkCount(video.Title) * 4 > (video.Title?.Length ?? 0); // >25% CJK.
+            return CjkCount(video.Title) > 0;
         }
 
         return false;

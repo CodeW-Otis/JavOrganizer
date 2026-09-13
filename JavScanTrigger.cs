@@ -323,9 +323,11 @@ public sealed class JavScanTrigger
     }
 
     /// <summary>
-    /// Reports whether an item's display name is Japanese-heavy (more than a
-    /// quarter CJK characters) while the plugin language is English — the
-    /// state a normal scan retries so an English title can replace it.
+    /// Reports whether an item's display name contains any Japanese (CJK)
+    /// characters while the plugin language is English. A fully-English
+    /// library has none, so even one CJK character — a short "同棲 LOVE
+    /// STORY" style title is mostly Latin — marks the item for one English
+    /// retry on the scheduled scans.
     /// </summary>
     private static bool IsJapaneseTitled(BaseItem item)
     {
@@ -335,16 +337,15 @@ public sealed class JavScanTrigger
             return false;
         }
 
-        var cjk = 0;
         foreach (var ch in name)
         {
             if (ch is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')
             {
-                cjk++;
+                return true;
             }
         }
 
-        return cjk * 4 > name.Length;
+        return false;
     }
 
     /// <summary>
