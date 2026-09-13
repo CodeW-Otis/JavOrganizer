@@ -96,19 +96,20 @@ Jellyfin line.
 5. [Scanning: automatic and manual](#scanning-automatic-and-manual)
 6. [Filename conventions](#filename-conventions)
 7. [🚀 Installation](#-installation)
-8. [Library setup](#library-setup)
-9. [Configuration](#configuration)
-10. [FlareSolverr lifecycle (auto start/stop)](#flaresolverr-lifecycle-auto-startstop)
-11. [Cover art and backdrops](#cover-art-and-backdrops)
-12. [How metadata is cached](#how-metadata-is-cached)
-13. [Collections](#collections)
-14. [Automatic cache cleanup](#automatic-cache-cleanup)
-15. [Building from source and running tests](#building-from-source-and-running-tests)
-16. [Project layout](#project-layout)
-17. [Troubleshooting](#troubleshooting)
-18. [Compatibility notes](#compatibility-notes)
-19. [Verified on a live server](#verified-on-a-live-server)
-20. [Changelog](#changelog)
+8. [☁️ FlareSolverr — what it is and how to install it (step by step)](#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)
+9. [📂 Library setup](#-library-setup)
+10. [Configuration](#configuration)
+11. [FlareSolverr lifecycle (auto start/stop)](#flaresolverr-lifecycle-auto-startstop)
+12. [🖼️ Cover art and backdrops](#️-cover-art-and-backdrops)
+13. [How metadata is cached](#how-metadata-is-cached)
+14. [Collections](#collections)
+15. [Automatic cache cleanup](#automatic-cache-cleanup)
+16. [Building from source and running tests](#building-from-source-and-running-tests)
+17. [Project layout](#project-layout)
+18. [Troubleshooting](#troubleshooting)
+19. [Compatibility notes](#compatibility-notes)
+20. [Verified on a live server](#verified-on-a-live-server)
+21. [Changelog](#changelog)
 
 </details>
 
@@ -403,8 +404,105 @@ loads on its matching line — using the wrong one fails with a
 `FileNotFound`/`TypeLoad` error at startup. (The runtime is provided by the
 Jellyfin server itself; you do not need to install anything extra.)
 
+> ☁️ **Also install [FlareSolverr](#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)**
+> (separate project, ~2 minutes, step-by-step guide below). It is **not
+> bundled** with the plugin — but without it the Cloudflare-walled sites
+> (JavLibrary, JavDB, MissAV — the main English-title sources) are skipped
+> and your metadata will be thinner. Once installed, the plugin manages its
+> whole lifecycle (start with Jellyfin, stop with Jellyfin).
+
 **Next step:** the [5-minute Quick Start](QUICKSTART.md) — library
-settings, file naming and the optional FlareSolverr setup.
+settings, file naming and the FlareSolverr setup.
+
+---
+
+## ☁️ FlareSolverr — what it is, and how to install it (step by step)
+
+> **Important:** FlareSolverr is **NOT included in the plugin zip.** It is a
+> separate open-source project that the plugin calls when a site challenges
+> the server. **JavOrganizer works without it** — but the Cloudflare-walled
+> sites (JavLibrary, JavDB, MissAV — the main *English-title* sources) get
+> skipped, so titles may fall back to other sites' data. Installing it takes
+> ~2 minutes and unlocks the full 18-site stack.
+
+### What it does
+
+Several metadata sites sit behind Cloudflare's bot check. When the plugin
+gets challenged, FlareSolverr solves the check in a real (headless) browser,
+hands the clearance back to the plugin, and every following request goes
+direct at full speed. One solve covers many requests, and concurrent workers
+share a single in-flight solve — it is not one browser round-trip per request.
+
+### Step 1 — Install FlareSolverr
+
+**Windows (no Docker):**
+
+1. Go to <https://github.com/FlareSolverr/FlareSolverr/releases>.
+2. Download `flaresolverr_windows_x64.zip` from the latest release.
+3. Extract it anywhere you like, e.g.
+   `C:\Users\<you>\AppData\Local\FlareSolverr\`.
+   You should now have `C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe`.
+4. **Don't run it manually** — the plugin will manage it (next steps).
+
+**Docker (any OS):**
+
+```bash
+docker run -d \
+  --name flaresolverr \
+  -p 8191:8191 \
+  -e LOG_LEVEL=info \
+  --restart unless-stopped \
+  ghcr.io/flaresolverr/flaresolverr:latest
+```
+
+**Linux (manual):** download `flaresolverr_linux_x64.tar.gz` from the same
+releases page, extract, and either run `./flaresolverr` yourself or let the
+plugin manage it via the executable path.
+
+### Step 2 — Point the plugin at it
+
+Open **Dashboard → Plugins → JavOrganizer** and set:
+
+| Field | What to enter |
+|---|---|
+| **FlareSolverr URL** | `http://localhost:8191/v1` (Docker/remote: `http://<host>:8191/v1`) |
+| **FlareSolverr Executable Path** | **Windows/non-Docker only:** the full path to `flaresolverr.exe`, e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe`. **Leave empty if you use Docker** — the container already runs it. |
+
+Save. All settings take effect immediately — no restart needed.
+
+### Step 3 — That's it. Here's what happens now
+
+| Event | What the plugin does |
+|---|---|
+| **Jellyfin starts** | Kills any orphaned FlareSolverr left from a crashed run → launches a fresh instance → waits for its health endpoint |
+| **A site challenges a request** | One shared solve through FlareSolverr → the clearance cookie + matching user agent are adopted → all following requests go direct at full speed |
+| **Jellyfin stops** | Kills the FlareSolverr process tree — nothing keeps running |
+
+**Verify it works:** start a scan (or restart Jellyfin) and check the log at
+Debug level for:
+
+```
+JavOrganizer.Plugin: "JavLibrary": FlareSolverr fetched '…' and granted direct access
+```
+
+That line means a challenge was solved and direct access was granted.
+
+### Troubleshooting FlareSolverr
+
+- **`FlareSolverr dies instantly, chromedriver permission error`** — a
+  previous crashed run left a locked `chromedriver.exe` under
+  `%AppData%\undetected_chromedriver\`. Kill any orphaned
+  `flaresolverr`/`chromedriver` processes in Task Manager, delete that
+  folder's contents, restart the server (the plugin's orphan reaper also
+  handles this on boot).
+- **`FlareSolverr could not solve the challenge`** occasionally — some
+  challenges are genuinely unsolvable at that moment; the site is retried
+  on the next scan and temporarily circuit-broken so scans stay fast.
+- **Docker users:** make sure the container is on the same network so
+  `localhost:8191` resolves, or use the container's hostname.
+- **Prefer to run it yourself?** Leave the executable path empty, run
+  FlareSolverr as your own service/container, and only set the URL —
+  the plugin detects it on demand either way.
 
 ## 📂 Library setup
 
@@ -451,6 +549,9 @@ Settings are persisted in
 be edited by hand while the server is stopped.
 
 ## ☁️ FlareSolverr lifecycle (auto start/stop)
+
+> The full step-by-step install guide lives in the section above:
+> **[FlareSolverr — what it is, and how to install it](#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)**.
 
 Set **FlareSolverr executable path** (for example
 `C:\Users\<you>\AppData\Local\FlareSolverr\flaresolverr.exe`) and the plugin

@@ -72,10 +72,16 @@ Grab it from the [Releases](../../releases) page, then:
 
 Several sources (JavLibrary — the main English-title source — JavDB, MissAV) sit behind Cloudflare. Without a bypass they will be skipped and your titles may fall back to other sites' data.
 
-1. Install [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) (Windows zip, or `docker run -d -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest`).
+> **FlareSolverr is a separate program — it is NOT included in the plugin zip.** Full step-by-step install instructions: see the **[FlareSolverr install guide](README.md#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)** in the main README.
+
+**Short version:**
+
+1. Install [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr):
+   - **Windows**: download `flaresolverr_windows_x64.zip` from its [releases page](https://github.com/FlareSolverr/FlareSolverr/releases), extract to e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\` — do **not** run it manually; the plugin will manage it.
+   - **Docker**: `docker run -d --name flaresolverr -p 8191:8191 --restart unless-stopped ghcr.io/flaresolverr/flaresolverr:latest`
 2. **Dashboard → Plugins → JavOrganizer**:
    - **FlareSolverr URL**: `http://localhost:8191/v1`
-   - **FlareSolverr Executable Path**: the path to `flaresolverr.exe` (leave empty if you run it in Docker) — the plugin then starts and stops it together with Jellyfin.
+   - **FlareSolverr Executable Path**: the full path to `flaresolverr.exe` (leave empty if you run it in Docker) — the plugin then starts and stops it together with Jellyfin.
 
 > [!TIP]
 > If you are on Windows, providing the executable path lets JavOrganizer manage FlareSolverr for you automatically!
