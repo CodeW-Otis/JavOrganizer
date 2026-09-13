@@ -11,7 +11,7 @@
       "changelog": "Live-tested end to end on Jellyfin 12.0 with a 1204-video library. 18-site scraping with per-code site cap and priority ranking; English-first merging (Latin titles/cast/studios preferred over Japanese-only variants); error and interstitial pages (403 ERROR, Redirecting, challenge pages) never parse into records; fixed Cloudflare detection so solved pages from English sources are actually used; per-host Referer image downloads (javbus covers fixed); advanced anti-ban/anti-detect (rotating browser profiles, jittered pacing, exponential backoff, 6-hour ban cooldown, unreachable circuit breaker); automatic scraping fixed for files added while the server runs (6-hourly scheduled task, thin-record self-healing, title-only retry); manual Scan + Deep Re-scrape buttons with live progress and cancel; JavBus rewritten against the real 2026 markup; stable code-based provider ids; cancel-safe deep scan; 82-check test suite.",
       "targetAbi": "12.0.0.0",
       "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.0/JavOrganizer-120-v1.3.0.0.zip",
-      "checksum": "d2fdd975d0964b37c33268966cb9c17242c3d77c6d690941a1970b96b426d5b5",
+      "checksum": "4f4ea796fcf92dfa02007750facc51939fce6b0cbd215efe53774ac4f3a67c29",
       "timestamp": "2026-09-13T00:00:00Z"
     }
   ]
