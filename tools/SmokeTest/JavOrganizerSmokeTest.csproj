@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Smoke test for the JavOrganizer plugin's core logic. The plugin's
+       source files are compiled directly into this binary (no server
+       needed): code parsing, catalog URL building, generic-scraper HTML
+       parsing and the multi-site merge rules. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>JavOrganizerSmokeTest</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Only the .NET 9/10 ASP.NET runtime is installed here; roll forward
+         from the net8.0 target at run time. -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\JavCodeParser.cs" Link="JavCodeParser.cs" />
+    <Compile Include="..\..\JavVideo.cs" Link="JavVideo.cs" />
+    <Compile Include="..\..\JavSiteCatalog.cs" Link="JavSiteCatalog.cs" />
+    <Compile Include="..\..\GenericSiteScraper.cs" Link="GenericSiteScraper.cs" />
+    <Compile Include="..\..\SiteScraper.cs" Link="SiteScraper.cs" />
+    <Compile Include="..\..\PerSiteRateLimiter.cs" Link="PerSiteRateLimiter.cs" />
+    <Compile Include="..\..\JavMetadataProvider.cs" Link="JavMetadataProvider.cs" />
+    <Compile Include="..\..\Plugin.cs" Link="Plugin.cs" />
+    <Compile Include="..\..\PluginConfiguration.cs" Link="PluginConfiguration.cs" />
+    <Compile Include="..\..\JavHttp.cs" Link="JavHttp.cs" />
+    <Compile Include="..\..\JavScraperFactory.cs" Link="JavScraperFactory.cs" />
+    <Compile Include="..\..\JavCache.cs" Link="JavCache.cs" />
+    <Compile Include="..\..\JavLibraryScraper.cs" Link="JavLibraryScraper.cs" />
+    <Compile Include="..\..\JavDbScraper.cs" Link="JavDbScraper.cs" />
+    <Compile Include="..\..\JavBusScraper.cs" Link="JavBusScraper.cs" />
+    <Compile Include="..\..\MissAvScraper.cs" Link="MissAvScraper.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.10.7" />
+    <PackageReference Include="Jellyfin.Model" Version="10.10.7" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.74" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>
