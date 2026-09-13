@@ -74,10 +74,11 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public string CacheDirectory => Path.Combine(DataFolderPath, "cache");
 
     /// <summary>
-    /// Gets the plugin's configuration pages shown in the web client
-    /// under Plugins → JavOrganizer.
+    /// Gets the plugin's pages: the settings page under Plugins →
+    /// JavOrganizer, plus a main-menu "Scan" page that puts the manual
+    /// scan buttons one click from the library.
     /// </summary>
-    /// <returns>The configuration page descriptor.</returns>
+    /// <returns>The page descriptors.</returns>
     public IEnumerable<PluginPageInfo> GetPages()
     {
         yield return new PluginPageInfo
@@ -86,6 +87,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             DisplayName = "JavOrganizer",
             EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace),
             EnableInMainMenu = false
+        };
+
+        yield return new PluginPageInfo
+        {
+            Name = "JavOrganizerScan",
+            DisplayName = "Scan",
+            EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.scanPage.html", GetType().Namespace),
+            EnableInMainMenu = true
         };
     }
 }

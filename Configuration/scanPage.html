@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Scan</title>
+</head>
+<body>
+    <div id="JavOrganizerScanPage" data-role="page" class="page libraryPage noSecondaryNavPage" data-require="emby-button,emby-input">
+        <div class="padded-left padded-right padded-bottom-page">
+            <div class="align-items-center" style="display: flex; gap: 0.6em; margin-bottom: 0.4em;">
+                <h1 style="margin: 0;">Scan</h1>
+            </div>
+            <div class="readOnlyBody" style="max-width: 720px;">
+                <p>Run a JavOrganizer scrape pass over the library. The same pass also runs automatically at server start and every 6 hours.</p>
+
+                <div style="margin-bottom: 1.2em;">
+                    <button is="emby-button" type="button" id="ScanNowButton" class="raised button-submit block emby-button">
+                        <span>Scan Library Now</span>
+                    </button>
+                    <button is="emby-button" type="button" id="DeepScanButton" class="raised block emby-button" style="margin-top: 0.6em;">
+                        <span>Deep Re-scrape Everything</span>
+                    </button>
+                    <button is="emby-button" type="button" id="CancelScanButton" class="block emby-button" style="margin-top: 0.6em; display: none;">
+                        <span>Cancel Scan</span>
+                    </button>
+                    <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
+                    <div class="fieldDescription" id="ScanState" style="margin-top: 0.4em;">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
+                </div>
+
+                <div class="paperList" style="padding: 0.8em 1em;">
+                    <div style="font-weight: bold; margin-bottom: 0.4em;">What the scans do</div>
+                    <div>• <b>Scan Library Now</b> — scrapes videos that are missing metadata, stuck at title-only, or still showing a Japanese title.</div>
+                    <div>• <b>Deep Re-scrape Everything</b> — purges each item's cache and re-fetches every video from the sites. Use after adding sites or upgrading.</div>
+                    <div>• Everything is also automatic: at server start, every 6 hours, and when the library discovers new files.</div>
+                </div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var scanStateTimer = null;
+
+            function setScanButtons(running) {
+                var scanBtn = document.querySelector('#ScanNowButton');
+                var deepBtn = document.querySelector('#DeepScanButton');
+                var cancelBtn = document.querySelector('#CancelScanButton');
+                if (running) {
+                    scanBtn.disabled = true;
+                    deepBtn.disabled = true;
+                    cancelBtn.style.display = '';
+                } else {
+                    scanBtn.disabled = false;
+                    deepBtn.disabled = false;
+                    cancelBtn.style.display = 'none';
+                    cancelBtn.disabled = false;
+                    scanBtn.querySelector('span').textContent = 'Scan Library Now';
+                    deepBtn.querySelector('span').textContent = 'Deep Re-scrape Everything';
+                }
+            }
+
+            function updateScanState() {
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State') }).then(function (state) {
+                    var el = document.querySelector('#ScanState');
+                    var bar = document.querySelector('#ScanProgressBar');
+                    setScanButtons(state.running);
+                    if (state.running) {
+                        var done = state.completed || 0;
+                        var total = state.totalPending || 0;
+                        var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+                        var elapsedText = '';
+                        if (state.startedAt) {
+                            var startMs = Date.parse(state.startedAt);
+                            var elapsedMs = startMs > 0 ? Date.now() - startMs : 0;
+                            if (elapsedMs > 0 && elapsedMs < 7 * 24 * 3600 * 1000) {
+                                var eMin = Math.floor(elapsedMs / 60000);
+                                var eSec = Math.floor((elapsedMs % 60000) / 1000);
+                                elapsedText = eMin > 0 ? eMin + 'm ' + eSec + 's' : eSec + 's';
+                                if (done > 0) {
+                                    var perItemMs = elapsedMs / done;
+                                    var remainMin = Math.round(perItemMs * (total - done) / 60000);
+                                    elapsedText += ' elapsed' + (remainMin >= 1 ? ', ~' + remainMin + ' min left' : '');
+                                }
+                            }
+                        }
+
+                        var mode = state.deep ? 'Deep re-scrape' : 'Scan';
+                        var dots = new Array(1 + (Math.floor(Date.now() / 600) % 3)).join('.') + '.';
+                        el.textContent = mode + ' running' + dots + ' ' +
+                            done + ' / ' + total + ' videos (' + pct + '%) — ' +
+                            (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
+                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '');
+                        el.style.color = '';
+
+                        if (bar) {
+                            bar.style.display = '';
+                            bar.max = total;
+                            bar.value = done;
+                        }
+
+                        var btnLabel = 'Scan Running… ' + pct + '%';
+                        document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
+                        document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
+                        if (!scanStateTimer) {
+                            scanStateTimer = setInterval(updateScanState, 3000);
+                        }
+                    } else {
+                        if (scanStateTimer) {
+                            clearInterval(scanStateTimer);
+                            scanStateTimer = null;
+                        }
+                        if (bar) {
+                            bar.style.display = 'none';
+                        }
+                        if ((state.completed || 0) > 0) {
+                            el.style.color = '#4caf50';
+                            el.textContent = '✓ Last scan: ' + (state.completed || 0) + ' processed, ' +
+                                (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
+                                ' still without metadata. Click Scan to run another pass.';
+                        } else {
+                            el.style.color = '';
+                            el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.';
+                        }
+                    }
+                }, function () {
+                    // State endpoint unreachable; leave defaults.
+                });
+            }
+
+            function triggerScan(url, button) {
+                var btn = button;
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Starting…';
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url) }).then(function (result) {
+                    require(['toast'], function (toast) {
+                        toast(result.message);
+                    });
+                    updateScanState();
+                }, function () {
+                    require(['toast'], function (toast) {
+                        toast('Could not start the scan.');
+                    });
+                    setScanButtons(false);
+                });
+            }
+
+            document.querySelector('#JavOrganizerScanPage')
+                .addEventListener('viewshow', function () {
+                    updateScanState();
+                });
+
+            document.querySelector('#JavOrganizerScanPage')
+                .addEventListener('viewhide', function () {
+                    if (scanStateTimer) {
+                        clearInterval(scanStateTimer);
+                        scanStateTimer = null;
+                    }
+                });
+
+            document.querySelector('#ScanNowButton')
+                .addEventListener('click', function () { triggerScan('JavOrganizer/Scan', this); });
+
+            document.querySelector('#DeepScanButton')
+                .addEventListener('click', function () { triggerScan('JavOrganizer/Scan/Deep', this); });
+
+            document.querySelector('#CancelScanButton')
+                .addEventListener('click', function () {
+                    var btn = this;
+                    btn.disabled = true;
+                    ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
+                        require(['toast'], function (toast) {
+                            toast(result.message);
+                        });
+                        updateScanState();
+                    }, function () {
+                        btn.disabled = false;
+                    });
+                });
+        </script>
+    </div>
+</body>
+</html>

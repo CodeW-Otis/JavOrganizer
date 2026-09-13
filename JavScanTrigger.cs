@@ -213,12 +213,16 @@ public sealed class JavScanTrigger
             }
             else
             {
-                // Normal pass: no provider id yet, or the item is stuck with
-                // title-only data (no date and no cover) even though it was
-                // scraped once — that state never heals by itself.
+                // Normal pass: no provider id yet, the item is stuck with
+                // title-only data (no date and no cover), or — when the
+                // language is English — its title came back Japanese-heavy,
+                // so one refresh can upgrade it. Each condition heals
+                // automatically on the scheduled scans.
+                var wantEnglish = Plugin.EffectiveConfiguration.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase);
                 pending = videos
                     .Where(v => !v.Item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _)
-                        || IsTitleOnly(v.Item))
+                        || IsTitleOnly(v.Item)
+                        || (wantEnglish && IsJapaneseTitled(v.Item)))
                     .Select(v => v.Item)
                     .ToList();
 
@@ -316,6 +320,31 @@ public sealed class JavScanTrigger
             // Image inspection may fail for exotic items; treat as fine.
             return false;
         }
+    }
+
+    /// <summary>
+    /// Reports whether an item's display name is Japanese-heavy (more than a
+    /// quarter CJK characters) while the plugin language is English — the
+    /// state a normal scan retries so an English title can replace it.
+    /// </summary>
+    private static bool IsJapaneseTitled(BaseItem item)
+    {
+        var name = item.Name;
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        var cjk = 0;
+        foreach (var ch in name)
+        {
+            if (ch is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')
+            {
+                cjk++;
+            }
+        }
+
+        return cjk * 4 > name.Length;
     }
 
     /// <summary>

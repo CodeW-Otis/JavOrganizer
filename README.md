@@ -336,11 +336,41 @@ If you delete the cache folder or run a Deep Re-scrape, it will force fresh netw
 
 ## 📚 Collections
 
-The plugin provides a scheduled task to build collections:
+The plugin provides a scheduled task (**Update JavOrganizer Collections**,
+runs daily, also runnable on demand) that builds:
 
-- **People:** Groups videos by actor/actress.
-- **Top Lists:** Generates "Most Viewed" and "Most Liked" collections based on Jellyfin user stats.
-- **Categories:** Optional collections by studio, genre, or release year.
+### 🎭 Gender browse cards (one entry point per gender)
+
+| Collection | What it holds |
+|---|---|
+| **Female Actresses (JavOrganizer)** | Every actress's whole filmography chained — performers ordered by **total views** across their titles, each performer's block by **release date** (newest first) |
+| **Male Actors (JavOrganizer)** | The same for male actors |
+
+Open either card in the library and browse top-down: you walk performer by
+performer — most-viewed actress first, her newest title first, then the next
+performer. It's a one-click "browse everyone" entry point per gender.
+
+### 👤 Per-person collections
+
+- **"Actress: Name"** / **"Actor: Name"** — one collection per performer
+  (when they appear in at least *Min videos per person collection*, default 2),
+  ordered by release date, with the performer's photo as the poster.
+
+### 🏆 Rankings and groups
+
+- **Most Viewed (JavOrganizer)** — top 100 by play count across all users.
+- **Most Liked (JavOrganizer)** — top 100 by likes/favorites across all users.
+- **All Videos (JavOrganizer)** — the entire scraped library, newest release first.
+- **Newest Releases (JavOrganizer)** — the 100 most recently released.
+- Optional: per studio ("Studio: …"), per genre ("Genre: …"), per release
+  year ("Year: …") — toggle in the plugin settings.
+
+**Sorting inside Jellyfin:** every collection carries a defined order
+(newest release first / most-viewed first), and Jellyfin's own sort options
+(**Sort by: Release Date / Play Count / Community Rating / Name** and the
+**Favorites** filter) are available on every collection and library view —
+per-person collections, gender cards, Most Viewed and Most Liked give you
+release-date, total-view and total-like browsing out of the box.
 
 ## 🧹 Automatic cache cleanup
 
@@ -372,6 +402,10 @@ The source code is organized logically. Key files include:
 
 ## ❓ Troubleshooting
 
+**Manual scan buttons are in two places.**
+- **Main menu → "Scan"** — the dedicated scan page (one click from anywhere)
+- **Dashboard → Plugins → JavOrganizer** — the same buttons at the top of the settings page
+
 **Plugin doesn't show up in Jellyfin.**
 Make sure you downloaded the right zip for your Jellyfin version. The `.meta` sidecar file and `HtmlAgilityPack.dll` must be present.
 
@@ -385,7 +419,7 @@ Configure FlareSolverr in the settings so the plugin can get past the checks.
 You might have an orphaned `chromedriver.exe` process. Kill it in Task Manager, clear out `%AppData%\undetected_chromedriver\`, and try again.
 
 **Wrong language for titles.**
-The plugin tries to grab English titles if available. If it can't find one across the enabled sites, it will fall back to Japanese. Make sure JavLibrary is enabled and FlareSolverr is working.
+The plugin tries to grab English titles if available. If it can't find one across the enabled sites, it will fall back to Japanese. Make sure JavLibrary is enabled and FlareSolverr is working. Any Japanese-titled items are also picked up and re-scraped automatically by the scheduled scans until an English variant is found.
 
 ## 🔗 Compatibility notes
 
@@ -397,6 +431,20 @@ The plugin tries to grab English titles if available. If it can't find one acros
 We regularly test the plugin on real Jellyfin setups (e.g., v1.3.0 on Jellyfin 12.0.0). We verify that auto-scanning, scheduled tasks, FlareSolverr integration, and metadata fetching work correctly on large libraries.
 
 ## 📋 Changelog
+
+### 1.3.1
+
+- **Main-menu "Scan" page** — the manual scan buttons (Scan / Deep
+  Re-scrape / Cancel with live progress bar, elapsed time and ETA) are now
+  one click from anywhere in Jellyfin, not only inside the plugin settings.
+- **Gender browse cards** — two new collections, *Female Actresses
+  (JavOrganizer)* and *Male Actors (JavOrganizer)*, each chaining every
+  performer of that gender: performers ordered by **total views**, each
+  performer's titles by **release date**. One "browse everyone" entry
+  point per gender.
+- **Japanese-title self-healing** — items whose scraped title came back
+  Japanese-heavy are automatically re-scraped by the normal scan (and by
+  the 6-hourly scheduled pass) until an English variant replaces them.
 
 ### 1.3.0
 

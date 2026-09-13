@@ -99,6 +99,9 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         // only reliable gender source (Jellyfin people carry no gender).
         var genderByPerson = JavCache.LoadGenderIndex(_logger);
 
+        // Item lookup map for the gender-card builder (and fast id→item access).
+        itemsById = new System.Lazy<Dictionary<Guid, Movie>>(() => items.ToDictionary(i => i.Id));
+
         // ---- People collections, gender-tagged ----
         // Names become "Actress: AIKA" / "Actor: Yuzuru Yuuki" so the
         // library groups them visibly, and old un-prefixed duplicates from
@@ -229,6 +232,39 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             await SyncCollectionAsync(MostLikedName, mostLiked, cancellationToken, "Top 100 videos by likes and favorites across all users.", null).ConfigureAwait(false);
         }
 
+        // ---- Gender overview cards ----
+        // Two browse-everything collections — "Female Actresses (JavOrganizer)"
+        // and "Male Actors (JavOrganizer)" — each chaining every performer of
+        // that gender's titles: performers ordered by total views of their
+        // titles, each performer's block by release date. One entry point
+        // per gender in the library.
+        progress.Report(66);
+        var personTotalViews = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (person, entry) in byPerson)
+        {
+            var views = 0;
+            foreach (var id in entry.Items)
+            {
+                playCounts.TryGetValue(id, out var plays);
+                views += plays;
+            }
+
+            personTotalViews[person] = views;
+        }
+
+        await BuildGenderCardCollectionAsync(
+            FemaleCardName,
+            byPerson.Where(kv => kv.Value.Gender == "female" && kv.Value.Items.Count >= config.MinVideosPerCollection),
+            personTotalViews,
+            "Browse every actress with their own collection — ordered by total views. Each entry is one performer's collection.",
+            cancellationToken).ConfigureAwait(false);
+        await BuildGenderCardCollectionAsync(
+            MaleCardName,
+            byPerson.Where(kv => kv.Value.Gender == "male" && kv.Value.Items.Count >= config.MinVideosPerCollection),
+            personTotalViews,
+            "Browse every male actor with their own collection — ordered by total views. Each entry is one performer's collection.",
+            cancellationToken).ConfigureAwait(false);
+
         // ---- All Videos (full library, release-date sorted) ----
         progress.Report(68);
         var allOrdered = OrderByRelease(items, items.Select(i => i.Id).ToList());
@@ -345,17 +381,34 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
 
     private const string AllVideosName = "All Videos (JavOrganizer)";
     private const string NewestReleasesName = "Newest Releases (JavOrganizer)";
+    private const string FemaleCardName = "Female Actresses (JavOrganizer)";
+    private const string MaleCardName = "Male Actors (JavOrganizer)";
 
+    /// <summary>
+    /// Lazy item-id → movie map built from the scraped list on first use,
+    /// so the gender-card builder can validate members quickly.
+    /// </summary>
+    private System.Lazy<Dictionary<Guid, Movie>> itemsById = new(() => []);
     private static readonly Microsoft.Extensions.Logging.Abstractions.NullLogger NullLogger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
     /// <summary>
     /// Orders item ids by their release date, newest first, so every
     /// collection is browsable chronologically. Items without a date sink
-    /// to the end in name order.
+    /// to the end in name order. Accepts either the full movie list or the
+    /// id→movie map built for the gender cards.
     /// </summary>
     /// <param name="items">All scraped movies.</param>
     /// <param name="ids">The ids to order.</param>
     /// <returns>Release-date-ordered ids.</returns>
+    private static List<Guid> OrderByRelease(Dictionary<Guid, Movie> items, List<Guid> ids)
+    {
+        return ids
+            .Where(id => items.ContainsKey(id))
+            .OrderByDescending(id => items[id].PremiereDate ?? DateTime.MinValue)
+            .ThenBy(id => items[id].SortName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static List<Guid> OrderByRelease(List<Movie> items, List<Guid> ids)
     {
         var byId = items.ToDictionary(i => i.Id);
@@ -419,6 +472,75 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             "male" => "Male actor",
             _ => "Actress/Actor"
         };
+    }
+
+    /// <summary>
+    /// Maps a gender to the collection-name prefix used for that person's
+    /// own collection ("Actress: …" / "Actor: …").
+    /// </summary>
+    /// <param name="gender">"female", "male" or empty.</param>
+    /// <returns>The name prefix.</returns>
+    private static string PrefixFor(string gender) => gender switch
+    {
+        "female" => "Actress: ",
+        "male" => "Actor: ",
+        _ => string.Empty
+    };
+
+    /// <summary>
+    /// Builds the "Female Actresses (JavOrganizer)" / "Male Actors
+    /// (JavOrganizer)" overview collections directly from the person→items
+    /// map: member order is performer-by-performer, performers ordered by
+    /// total views of their titles, each performer's block by release date.
+    /// Browsing it top-down walks actress 1 (newest→oldest), actress 2, … —
+    /// one entry point per gender.
+    /// </summary>
+    /// <param name="name">The gender-card collection name.</param>
+    /// <param name="performers">Person entries (name → items/gender/role) for this gender.</param>
+    /// <param name="totalViews">Person → total play count across their titles.</param>
+    /// <param name="overview">Overview text for the card.</param>
+    /// <param name="ct">Cancellation token.</param>
+    private async Task BuildGenderCardCollectionAsync(
+        string name,
+        IEnumerable<KeyValuePair<string, (List<Guid> Items, string Gender, string Role)>> performers,
+        Dictionary<string, int> totalViews,
+        string overview,
+        CancellationToken ct)
+    {
+        var orderedPerformers = performers
+            .OrderByDescending(kv => totalViews.TryGetValue(kv.Key, out var v) ? v : 0)
+            .ThenByDescending(kv => kv.Value.Items.Count)
+            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (orderedPerformers.Count == 0)
+        {
+            DeleteCollectionByName(name);
+            return;
+        }
+
+        // Chain each performer's titles (release-date order within a
+        // performer, performers by total views). Duplicates across
+        // performers are kept — a video with two actresses appears in both
+        // blocks, preserving the browse flow.
+        var members = new List<Guid>();
+        foreach (var (_, entry) in orderedPerformers)
+        {
+            members.AddRange(OrderByRelease(itemsById.Value, entry.Items));
+        }
+
+        if (members.Count == 0)
+        {
+            DeleteCollectionByName(name);
+            return;
+        }
+
+        await SyncCollectionAsync(name, members, ct, overview, null).ConfigureAwait(false);
+        _logger.LogInformation(
+            "JavOrganizer gender card '{Name}': {Performers} performers, {Members} entries",
+            name,
+            orderedPerformers.Count,
+            members.Count);
     }
 
     /// <summary>

@@ -291,14 +291,25 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             // A substantive record is served from cache; a thin one (title
             // only — the state that left items at "title only" forever) is
             // re-scraped once its grace period passes, so later scans heal
-            // it when sites recover or more of them are enabled.
-            if (IsSubstantive(cached) || JavCache.IsFreshFor(normalized, ThinRetryGrace))
+            // it when sites recover or more of them are enabled. A
+            // substantive record with a Japanese-only title is also retried
+            // once (when the configured language is English) so an English
+            // variant can replace it.
+            var needsEnglish = NeedsLanguageRetry(cached);
+            if ((IsSubstantive(cached) && !needsEnglish) || JavCache.IsFreshFor(normalized, ThinRetryGrace))
             {
                 _logger.LogDebug("Cache hit for '{Code}'", normalized);
                 return cached;
             }
 
-            _logger.LogDebug("Thin cache record for '{Code}'; re-scraping for more data", normalized);
+            if (needsEnglish)
+            {
+                _logger.LogInformation("Cached title for '{Code}' is not in the configured language; re-scraping once", normalized);
+            }
+            else
+            {
+                _logger.LogDebug("Thin cache record for '{Code}'; re-scraping for more data", normalized);
+            }
         }
 
         // Skip the sites entirely when the code was recently looked up and
@@ -341,6 +352,46 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         || video.MaleActors.Count > 0
         || video.ReleaseDate is not null
         || video.RuntimeMinutes is not null;
+
+    /// <summary>
+    /// Reports whether a cached record's title is in a different script
+    /// than the configured language requests (e.g. a Japanese-only title
+    /// while the plugin language is English), meaning one re-scrape could
+    /// upgrade it. The 6-hour freshness gate (the same one used for thin
+    /// records) throttles how often that retry happens.
+    /// </summary>
+    private static bool NeedsLanguageRetry(JavVideo video)
+    {
+        var language = Plugin.EffectiveConfiguration.Language;
+        if (string.IsNullOrWhiteSpace(language) || language.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+        {
+            return CjkCount(video.Title) * 4 > (video.Title?.Length ?? 0); // >25% CJK.
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Counts CJK (Japanese/Chinese) characters in a string.
+    /// </summary>
+    private static int CjkCount(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var ch in text)
+        {
+            if (ch is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     /// <summary>
     /// The outcome of a multi-site scrape: the merged record when any site
