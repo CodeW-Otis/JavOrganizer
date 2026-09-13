@@ -1,16 +1,28 @@
-# JavOrganizer — Jellyfin Plugin
-
 <div align="center">
+
+<img src="Logo.png" alt="JavOrganizer logo" width="180">
+
+# JavOrganizer
 
 **JAV metadata for Jellyfin from up to 18 websites, scraped in parallel
 with an advanced anti-ban system.**
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
+[![Release](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-green.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-purple.svg)](#build-matrix--pick-the-build-matching-your-server)
+[![Stars](https://img.shields.io/github/stars/CodeW-Otis/JavOrganizer.svg?style=social)](https://github.com/CodeW-Otis/JavOrganizer/stargazers)
 
-[Install](#installation) · [Quick Start guide](QUICKSTART.md) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+### ⚡ One-line install — copy this into Jellyfin:
+
+```
+https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
+```
+
+**[→ Full install guide below](#-installation)** · [Quick Start (5 min)](QUICKSTART.md) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+
+**⭐ Star this repo if it organizes your library — it really helps others find it.**
 
 </div>
 
@@ -54,7 +66,7 @@ Jellyfin line.
 4. [Advanced anti-ban & anti-detect system](#advanced-anti-ban--anti-detect-system)
 5. [Scanning: automatic and manual](#scanning-automatic-and-manual)
 6. [Filename conventions](#filename-conventions)
-7. [Installation](#installation)
+7. [🚀 Installation](#-installation)
 8. [Library setup](#library-setup)
 9. [Configuration](#configuration)
 10. [FlareSolverr lifecycle (auto start/stop)](#flaresolverr-lifecycle-auto-startstop)
@@ -287,52 +299,79 @@ Zero-padded variants are normalized automatically: `abp-00123` is searched
 as the canonical `ABP-123` (the site index keys on the zero-free form), and
 the cache stores it under `abp-123`.
 
-## Installation
+## 🚀 Installation
 
-### Method 1 — Online, from the plugin catalog (recommended)
+Two ways to install. **Method 1 is a 30-second copy-paste** and gets you
+automatic updates; Method 2 is a manual download.
 
-If the plugin is published to a repository (or you host the one-file
-`manifest.json` yourself, e.g. on GitHub):
+### Method 1 — Plugin catalog ⭐ (recommended, 30 seconds)
+
+**Copy this repository URL:**
+
+```
+https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
+```
+
+Then in Jellyfin:
 
 1. Open **Dashboard → Plugins → Repositories**.
-2. Add the repository URL pointing to the `manifest.json`, e.g.
-   `https://raw.githubusercontent.com/OWNER/REPO/main/manifest.json`.
+2. Click **➕**, paste the URL above, and **Save**.
 3. Open **Dashboard → Plugins → Catalog**, find **JavOrganizer** and click
-   **Install** for the entry whose *targetAbi* matches your server.
-4. Restart when prompted. Done — updates then arrive through the same catalog.
+   **Install** on the entry whose *targetAbi* matches your server
+   (the catalog lists one per Jellyfin line — pick yours).
+4. **Restart Jellyfin** when prompted.
 
-Publishing your own copy: run `.\build.ps1` (it produces per-version release
-zips plus `.sha256` checksum files), upload the zips as GitHub releases, then
-fill each version's `sourceUrl` and `checksum` in `manifest.json`.
+That's it — future releases arrive through the same catalog with one click.
 
-### Method 2 — Manual install
+> 💡 **Which Jellyfin do I have?** Look at the bottom of the dashboard
+> sidebar, or **Dashboard → Plugins** after install — the plugin shows its
+> version there. The catalog entry matching your server is the right one.
 
-1. Download the zip matching your Jellyfin version (see the table below).
-2. Extract its **contents** into `{Jellyfin data}/plugins/JavOrganizer/`
-   (on Windows typically `C:\ProgramData\Jellyfin\Server\plugins\JavOrganizer\`
-   or `%LocalAppData%\Jellyfin\plugins\JavOrganizer\`,
-   on Linux `/var/lib/jellyfin/plugins/JavOrganizer/`).
+### Method 2 — Manual download
 
-   The folder must contain `Jellyfin.Plugin.JavOrganizer.dll`,
-   `HtmlAgilityPack.dll`, the `.deps.json`, the `.runtimeconfig.json` and the
-   `Jellyfin.Plugin.JavOrganizer.dll.meta` sidecar.
-3. Restart Jellyfin.
-4. Verify in the log: `Loaded plugin: "JavOrganizer" "1.3.0"`.
+Grab the zip matching your Jellyfin version from the
+[**Releases**](https://github.com/CodeW-Otis/JavOrganizer/releases/latest)
+page (all five are attached to every release, each with a `.sha256`
+checksum):
 
-### Build matrix — pick the build matching your server
+| Your Jellyfin version | Download this zip |
+|---|---|
+| **12.0.x** | `JavOrganizer-120-v1.3.0.0.zip` |
+| **10.11.x** | `JavOrganizer-1011-v1.3.0.0.zip` |
+| **10.10.x** | `JavOrganizer-1010-v1.3.0.0.zip` |
+| **10.9.x** | `JavOrganizer-109-v1.3.0.0.zip` |
+| **10.8.x** | `JavOrganizer-108-v1.3.0.0.zip` |
 
-| Jellyfin version | Build folder / zip | .NET runtime required |
+1. Extract the zip **contents** into your plugins folder:
+   - **Windows**: `C:\ProgramData\Jellyfin\Server\plugins\JavOrganizer\`
+     or `%LocalAppData%\Jellyfin\plugins\JavOrganizer\`
+   - **Linux**: `/var/lib/jellyfin/plugins/JavOrganizer/`
+   - **Docker**: mount the folder into the container's
+     `/config/plugins/JavOrganizer/`
+
+   The folder must end up containing `Jellyfin.Plugin.JavOrganizer.dll`,
+   `HtmlAgilityPack.dll`, the `.deps.json`, the `.runtimeconfig.json` and
+   the `.dll.meta` sidecar.
+2. Restart Jellyfin.
+3. Verify under **Dashboard → Plugins**: **JavOrganizer 1.3.0** is listed.
+
+### Build matrix — why one zip per Jellyfin line
+
+| Jellyfin version | Build | .NET runtime required |
 |---|---|---|
-| 10.8.x | `JavOrganizer-10.8` / `…-108-v1.3.0.0.zip` | .NET 6 |
-| 10.9.x | `JavOrganizer-10.9` / `…-109-v1.3.0.0.zip` | .NET 8 |
-| 10.10.x | `JavOrganizer-10.10` / `…-1010-v1.3.0.0.zip` | .NET 8 |
-| 10.11.x | `JavOrganizer-10.11` / `…-1011-v1.3.0.0.zip` | .NET 9 |
-| 12.0.x | `JavOrganizer-12.0` / `…-120-v1.3.0.0.zip` | .NET 10 |
+| 10.8.x | `…-108-…` | .NET 6 |
+| 10.9.x | `…-109-…` | .NET 8 |
+| 10.10.x | `…-1010-…` | .NET 8 |
+| 10.11.x | `…-1011-…` | .NET 9 |
+| 12.0.x | `…-120-…` | .NET 10 |
 
-Jellyfin's own assemblies change between minor versions, so a build only loads
-on its matching line — using the wrong one fails with a
+Jellyfin's own assemblies change between minor versions, so a build only
+loads on its matching line — using the wrong one fails with a
 `FileNotFound`/`TypeLoad` error at startup. (The runtime is provided by the
-Jellyfin server itself; you do not need to install it separately.)
+Jellyfin server itself; you do not need to install anything extra.)
+
+**Next step:** the [5-minute Quick Start](QUICKSTART.md) — library
+settings, file naming and the optional FlareSolverr setup.
 
 ## Library setup
 

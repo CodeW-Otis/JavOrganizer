@@ -6,8 +6,21 @@ Jellyfin. For the full feature reference, see the
 
 ## 1. Install the plugin
 
-**Pick the build matching your Jellyfin version** — this matters, a
-mismatched build will not load:
+**Fastest — add the plugin repository (30 seconds):**
+
+Copy this URL:
+
+```
+https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
+```
+
+In Jellyfin: **Dashboard → Plugins → Repositories → ➕** → paste → Save →
+**Dashboard → Plugins → Catalog** → **Install** *JavOrganizer* (pick the
+entry matching your Jellyfin version) → restart when prompted.
+
+**Alternative — manual download** from
+[Releases](../../releases/latest), picking the zip matching your Jellyfin
+version (this matters, a mismatched build will not load):
 
 | Your Jellyfin | Download |
 |---|---|
