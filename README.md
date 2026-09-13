@@ -372,6 +372,16 @@ performer. It's a one-click "browse everyone" entry point per gender.
 per-person collections, gender cards, Most Viewed and Most Liked give you
 release-date, total-view and total-like browsing out of the box.
 
+
+### 🔀 Where the sort options live (exact UI paths)
+
+| Page | How to sort |
+|---|---|
+| **Home** | Home is a landing page (libraries + Latest). Open a library or collection to sort its contents. |
+| **Movies library** | Open the library → **⋮ menu (top right) → Sort by**: Name, Community Rating, Critic Rating, Date Added, Date Played, Parental Rating, **Play Count (total views)**, **Release Date**, Runtime. Works with the ↑/↓ toggle for direction. |
+| **Collections view** | Same **⋮ → Sort by** menu. Type in the search box to jump to a card (e.g. "Female"). |
+| **Inside any collection / gender card** | The same native sort menu, plus the plugin's built-in ordering: gender cards are pre-sorted performers-by-total-views with each performer's titles newest-first. |
+| **"Total likes"** | Jellyfin has no server-side aggregate-likes sort, so the plugin provides it as content instead: the **Most Liked (JavOrganizer)** collection is your library ranked by likes/favorites across all users, and per-user favorites sort via **Filters → Favorites** anywhere. |
 ## 🧹 Automatic cache cleanup
 
 A scheduled task runs daily (default 04:00) to delete expired cache files and clean up orphaned records for files that are no longer in your library.
