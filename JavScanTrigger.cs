@@ -223,18 +223,12 @@ public sealed class JavScanTrigger
             }
             else
             {
-                // Normal pass: no provider id yet, the item is stuck with
-                // title-only data (no date and no cover), a sparse scrape that
-                // never got its genres/studio/overview, or — when the language
-                // is English — its title came back Japanese-heavy, so one
-                // refresh can upgrade it. Each condition heals automatically
-                // on the scheduled scans.
+                // Normal pass — deliberately the *only* pass that respects
+                // existing work. See <see cref="NeedsScrape"/> for exactly
+                // what gets queued and, just as importantly, what does not.
                 var wantEnglish = Plugin.EffectiveConfiguration.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase);
                 pending = videos
-                    .Where(v => !v.Item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _)
-                        || IsTitleOnly(v.Item)
-                        || IsSparselyScraped(v.Item)
-                        || (wantEnglish && IsJapaneseTitled(v.Item)))
+                    .Where(v => NeedsScrape(v.Item, v.Code, wantEnglish))
                     .Select(v => v.Item)
                     .ToList();
 
@@ -312,6 +306,53 @@ public sealed class JavScanTrigger
             // The indicator must not point at a stale item once the pass ends.
             _currentItem = null;
         }
+    }
+
+    /// <summary>
+    /// Decides whether an item needs a metadata scrape in a normal pass —
+    /// and, just as importantly, which items are left alone.
+    /// </summary>
+    /// <remarks>
+    /// Queued:
+    /// <list type="bullet">
+    /// <item>never scraped by the plugin (no provider id),</item>
+    /// <item>scraped so thinly that it shows no date and no cover,</item>
+    /// <item>missing genres, a studio or the overview, but only once its
+    /// cached scrape has aged out — if the sites were asked recently and had
+    /// no genres for the code, the cached record is still the answer and
+    /// queueing again would re-scrape already-fetched metadata,</item>
+    /// <item>titled in Japanese while the plugin language is English, so one
+    /// refresh can upgrade it (bounded by the provider's retry counter).</item>
+    /// </list>
+    /// Left alone: an item whose cached scrape is still within its TTL. That
+    /// record is the authoritative answer for the code, whatever the item
+    /// currently shows, so it is never re-fetched until it ages out. The deep
+    /// pass is the explicit escape hatch that ignores all of this.
+    /// </remarks>
+    /// <param name="item">The library item.</param>
+    /// <param name="code">The product code parsed from the item.</param>
+    /// <param name="wantEnglish">Whether the plugin language is English.</param>
+    /// <returns><c>true</c> when the item should be scraped now.</returns>
+    internal static bool NeedsScrape(BaseItem item, string code, bool wantEnglish)
+    {
+        if (!item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _))
+        {
+            // Never scraped by the plugin.
+            return true;
+        }
+
+        if (IsTitleOnly(item))
+        {
+            return true;
+        }
+
+        if (wantEnglish && IsJapaneseTitled(item))
+        {
+            return true;
+        }
+
+        return IsSparselyScraped(item)
+            && !JavCache.IsStillValid(JavCodeParser.Normalize(code));
     }
 
     /// <summary>

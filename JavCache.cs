@@ -540,6 +540,22 @@ internal static class JavCache
     }
 
     /// <summary>
+    /// Reports whether a cached scrape for the code exists and has not yet
+    /// reached the configured cache TTL — that is, it is still the
+    /// authoritative answer for that code and the sites need not be asked
+    /// again. Missing records count as not valid.
+    /// </summary>
+    /// <remarks>
+    /// This is what lets a scan honour "never re-scrape metadata that has
+    /// already been fetched": an item whose cached record is still valid was
+    /// already scraped, whatever the item currently shows, so it is skipped
+    /// until the record ages out.
+    /// </remarks>
+    /// <param name="normalizedCode">Cache-key form of the product code.</param>
+    /// <returns><c>true</c> when a record exists and is within its TTL.</returns>
+    internal static bool IsStillValid(string normalizedCode) => IsFreshFor(normalizedCode, MaxAge);
+
+    /// <summary>
     /// Deletes the cached record and any negative marker for the code, so
     /// the next scrape goes back to the sites. Used by the deep scan to
     /// force a fresh, complete multi-site scrape.

@@ -9,7 +9,7 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.1-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.2-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -498,6 +498,32 @@ carrying a poster, and all three levels (card → performer → videos) browsing
 correctly.
 
 ## 📋 Changelog
+
+### 1.5.2
+
+Two changes, both driven by testing against the live library.
+
+- **The normal scan no longer re-fetches metadata that has already been
+  scraped.** An item whose cached scrape is still within its cache TTL is
+  now skipped outright. Before this, an item that came back sparse — a site
+  answered with a title and a cast but no genres, studio or overview, which
+  is what the item kept showing — was re-queued on **every** scan, because
+  it already had a provider id and therefore matched no other heal
+  condition. On a library where the sites simply have no genres for a code,
+  that meant re-scraping already-fetched metadata on every pass, forever.
+  Queued now: never-scraped items, title-only items, sparse items *only
+  once their cached scrape has aged out*, and Japanese-titled items (when
+  the plugin language is English, bounded by the provider's retry counter).
+  Left alone: everything whose cached scrape is still valid. The deep
+  pass remains the explicit escape hatch that ignores all of this.
+
+- **Removed a dead asset**: `docs/logo_optimized.png` was tracked but
+  referenced nowhere.
+
+Verified on a live Jellyfin 12.0.0 server mid-way through a large heal
+pass: the scan skips completed work and only touches what is genuinely
+unscraped. Offline suite: **251 checks**, all five Jellyfin targets build
+with zero warnings.
 
 ### 1.5.1
 

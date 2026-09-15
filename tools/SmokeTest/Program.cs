@@ -23,6 +23,32 @@ void Check(bool ok, string label)
     }
 }
 
+/// <summary>
+/// Builds a Movie with a JavOrganizer provider id and the given metadata, so
+/// the scan-predicate tests can shape an item's scrape state precisely.
+/// </summary>
+/// <param name="name">Display name (also the code source when needed).</param>
+/// <param name="code">Product code the provider id is derived from.</param>
+/// <param name="g">Genres to set.</param>
+/// <param name="s">Studios to set.</param>
+/// <param name="o">Overview text to set.</param>
+/// <returns>The constructed item.</returns>
+static MediaBrowser.Controller.Entities.Movies.Movie MakeMovie(string name, string code, string[] g, string[] s, string o)
+{
+    var movie = new MediaBrowser.Controller.Entities.Movies.Movie
+    {
+        Name = name,
+        Overview = o,
+        Genres = g,
+        Studios = s,
+        // A real scraped item always carries a release date; without one the
+        // item would read as title-only rather than as the state under test.
+        PremiereDate = new DateTime(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc)
+    };
+    movie.ProviderIds[JavMetadataProvider.ProviderIdKey] = code.ToLowerInvariant();
+    return movie;
+}
+
 Console.WriteLine("== JavCodeParser ==");
 Check(JavCodeParser.ExtractCode("SSIS-406.mp4") == "SSIS-406", "SSIS-406");
 Check(JavCodeParser.ExtractCode("abp982.mp4") == "ABP-982", "abp982 glued");
@@ -838,6 +864,42 @@ var untouched = new MediaBrowser.Controller.Entities.Movies.Movie
 Check(!JavScanTrigger.IsSparselyScraped(untouched),
     "an item with no provider id is not reported as sparsely scraped");
 
+Console.WriteLine("== Normal scan never re-scrapes already-scraped metadata ==");
+// The requirement: metadata that was already fetched and is still valid in
+// the cache must not be fetched again. A complete item is never queued, and
+// even a sparse item whose cached scrape is still within its TTL is left
+// alone — only a sparse item with no (or an expired) cached scrape is
+// revisited. These cases use a code that has no cache record on disk, which
+// is the state of an item that has never been scraped.
+const string freshCode = "ZZZ-001";
+var complete = MakeMovie("ZZZ-001 A Complete Title", freshCode, g: ["Drama"], s: ["Studio"], o: "Provider: JavOrganizer");
+Check(!JavScanTrigger.NeedsScrape(complete, freshCode, wantEnglish: true),
+    "a complete item is never queued, whatever the language setting");
+
+var sparse = MakeMovie("ZZZ-001 A Sparse Title", freshCode, g: [], s: [], o: "");
+Check(JavScanTrigger.NeedsScrape(sparse, freshCode, wantEnglish: true),
+    "a sparse item with no cached scrape is queued once, to heal");
+
+var neverScrapedItem = MakeMovie("ZZZ-001 An Untouched Title", freshCode, g: [], s: [], o: "");
+neverScrapedItem.ProviderIds.Remove(JavMetadataProvider.ProviderIdKey);
+Check(JavScanTrigger.NeedsScrape(neverScrapedItem, freshCode, wantEnglish: true),
+    "an item the plugin never touched is always queued");
+
+// A sparse item whose cached scrape is still valid is left alone: the sites
+// were already asked for this code and the record has not aged out.
+var cacheProbe = MakeMovie("ZZZ-002 Probe Title", freshCode, g: [], s: [], o: "");
+Check(!JavCache.IsStillValid(JavCodeParser.Normalize("ZZZ-002")),
+    "a code with no cache record is not treated as already-scraped");
+Check(JavScanTrigger.NeedsScrape(cacheProbe, "ZZZ-002", wantEnglish: true),
+    "so that item is queued for its first scrape");
+
+// Language upgrade is bounded and only applies when English is configured.
+var japanese = MakeMovie("ZZZ-003 日本語のタイトル", freshCode, g: ["Drama"], s: ["Studio"], o: "Provider: JavOrganizer");
+Check(JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: true),
+    "a Japanese-titled item is queued when the language is English");
+Check(!JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: false),
+    "a Japanese-titled item is left alone when the language is not English");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -920,6 +982,8 @@ internal static class PluginConfiguration_Probe
         return new PluginConfiguration().UseJavGuru;
     }
 }
+
+/// <summary>
 
 /// <summary>
 /// Locates the repository's manifest.json from the test binary's location, so
