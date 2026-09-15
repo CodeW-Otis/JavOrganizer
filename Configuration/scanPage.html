@@ -24,7 +24,8 @@
                         <span>Cancel Scan</span>
                     </button>
                     <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
-                    <div class="fieldDescription" id="ScanState" style="margin-top: 0.4em;">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
+                    <div class="fieldDescription" id="ScanState" style="margin-top: 0.6em;">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
+                    <div class="fieldDescription" id="ScanCurrent" style="margin-top: 0.2em; display: none;"></div>
                 </div>
 
                 <div class="paperList" style="padding: 0.8em 1em;">
@@ -58,9 +59,18 @@
             }
 
             function updateScanState() {
-                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State') }).then(function (state) {
+                // dataType:'json' is required: without it ApiClient.ajax
+                // resolves to the raw fetch Response rather than the parsed
+                // body, so every field read off the state came back undefined
+                // and the progress indicator never appeared.
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State'), dataType: 'json' }).then(function (state) {
                     var el = document.querySelector('#ScanState');
+                    var cur = document.querySelector('#ScanCurrent');
                     var bar = document.querySelector('#ScanProgressBar');
+                    if (!state) {
+                        return;
+                    }
+
                     setScanButtons(state.running);
                     if (state.running) {
                         var done = state.completed || 0;
@@ -84,22 +94,34 @@
                         }
 
                         var mode = state.deep ? 'Deep re-scrape' : 'Scan';
-                        var dots = new Array(1 + (Math.floor(Date.now() / 600) % 3)).join('.') + '.';
                         var pacing = (state.pacingMultiplier && state.pacingMultiplier > 1.1)
                             ? ' · pacing ' + state.pacingMultiplier + '× (easing off)' : '';
-                        el.textContent = mode + ' running' + dots + ' ' +
+                        el.textContent = mode + ' running · ' +
                             done + ' / ' + total + ' videos (' + pct + '%) — ' +
                             (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
                             ' still missing' + (elapsedText ? ' · ' + elapsedText : '') + pacing;
                         el.style.color = '';
 
+                        // Which item a worker is on right now — the thing that
+                        // makes a long pass look alive instead of frozen.
+                        if (cur) {
+                            if (state.current) {
+                                var now = String(state.current);
+                                cur.textContent = 'Now scraping: ' + (now.length > 90 ? now.slice(0, 90) + '…' : now);
+                                cur.style.display = '';
+                            } else {
+                                cur.textContent = '';
+                                cur.style.display = 'none';
+                            }
+                        }
+
                         if (bar) {
                             bar.style.display = '';
-                            bar.max = total;
+                            bar.max = total > 0 ? total : 1;
                             bar.value = done;
                         }
 
-                        var btnLabel = 'Scan Running… ' + pct + '%';
+                        var btnLabel = 'Scanning… ' + pct + '%';
                         document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
                         document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
                         if (!scanStateTimer) {
@@ -112,19 +134,34 @@
                         }
                         if (bar) {
                             bar.style.display = 'none';
+                            bar.value = 0;
+                        }
+                        if (cur) {
+                            cur.textContent = '';
+                            cur.style.display = 'none';
                         }
                         if ((state.completed || 0) > 0) {
                             el.style.color = '#4caf50';
                             el.textContent = '✓ Last scan: ' + (state.completed || 0) + ' processed, ' +
                                 (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
-                                ' still without metadata. Click Scan to run another pass.';
+                                ' still without metadata.';
                         } else {
                             el.style.color = '';
                             el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.';
                         }
                     }
                 }, function () {
-                    // State endpoint unreachable; leave defaults.
+                    // The state endpoint is unreachable — say so instead of
+                    // silently leaving stale text on the page.
+                    if (scanStateTimer) {
+                        clearInterval(scanStateTimer);
+                        scanStateTimer = null;
+                    }
+                    var el = document.querySelector('#ScanState');
+                    if (el) {
+                        el.style.color = '#e5a00d';
+                        el.textContent = 'Could not read the scan state from the server. Reload the page to try again.';
+                    }
                 });
             }
 
@@ -141,9 +178,9 @@
                     btn.querySelector('span').textContent = original;
                 }
 
-                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url) }).then(function (result) {
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url), dataType: 'json' }).then(function (result) {
                     require(['toast'], function (toast) {
-                        toast(result.message);
+                        toast(result && result.message ? result.message : 'Scan request sent.');
                     });
                     restore();
                     updateScanState();
@@ -167,9 +204,9 @@
                     btn.querySelector('span').textContent = original;
                 }
 
-                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel'), dataType: 'json' }).then(function (result) {
                     require(['toast'], function (toast) {
-                        toast(result.message);
+                        toast(result && result.message ? result.message : 'Cancel requested.');
                     });
                     restore();
                     updateScanState();

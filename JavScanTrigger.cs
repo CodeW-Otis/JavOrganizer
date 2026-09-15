@@ -95,6 +95,16 @@ public sealed class JavScanTrigger
     /// </summary>
     public int StillMissing => Volatile.Read(ref _stillMissingField);
 
+    private string? _currentItem;
+
+    /// <summary>
+    /// Gets the display name of the item a worker is scraping right now, for
+    /// the live progress indicator. A long pass over a large library can look
+    /// frozen from the outside; this shows it is moving and where it is.
+    /// Cleared when the pass ends.
+    /// </summary>
+    public string? CurrentItem => _currentItem;
+
     private int _completedField;
     private int _refreshedField;
     private int _stillMissingField;
@@ -297,6 +307,11 @@ public sealed class JavScanTrigger
         {
             _logger.LogWarning(ex, "JavOrganizer scan stopped unexpectedly");
         }
+        finally
+        {
+            // The indicator must not point at a stale item once the pass ends.
+            _currentItem = null;
+        }
     }
 
     /// <summary>
@@ -417,6 +432,9 @@ public sealed class JavScanTrigger
                 // Ease off when the sites have recently pushed back; a no-op
                 // at full speed when everything is healthy.
                 await AdaptiveThrottle.MaybePauseAsync(ct).ConfigureAwait(false);
+
+                // Publish where the pass is, for the live progress indicator.
+                _currentItem = item.Name;
 
                 if (codesByItem is not null
                     && codesByItem.TryGetValue(item.Id, out var deepCode)

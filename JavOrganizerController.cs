@@ -1,4 +1,5 @@
 using MediaBrowser.Controller;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -10,7 +11,16 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// (every video, cache purged first), plus the live progress state both
 /// buttons display.
 /// </summary>
+/// <remarks>
+/// Marked <see cref="AuthorizeAttribute"/> so every endpoint requires an
+/// authenticated Jellyfin session. Without it the endpoints answered
+/// anonymous requests: anything on the network could start a deep re-scrape
+/// (driving this server's traffic against the scraping sites) or cancel a
+/// running pass. The web client's ApiClient attaches the session token to
+/// every request automatically, so the plugin's own pages are unaffected.
+/// </remarks>
 [ApiController]
+[Authorize]
 [Route("JavOrganizer")]
 public sealed class JavOrganizerController : ControllerBase
 {
@@ -68,9 +78,10 @@ public sealed class JavOrganizerController : ControllerBase
 
     /// <summary>
     /// Gets whether a scan is currently running and its live progress —
-    /// how many videos the pass set out to refresh, how many are done and
-    /// how many received metadata — plus the engine's current adaptive
-    /// pressure, for the button's state display.
+    /// how many videos the pass set out to refresh, how many are done, how
+    /// many received metadata, which item is being scraped right now, and
+    /// the engine's current adaptive pressure, for the button's state
+    /// display.
     /// </summary>
     /// <returns>200 with the scan state.</returns>
     [HttpGet("Scan/State")]
@@ -85,6 +96,7 @@ public sealed class JavOrganizerController : ControllerBase
             completed = _scanTrigger.Completed,
             refreshed = _scanTrigger.Refreshed,
             stillMissing = _scanTrigger.StillMissing,
+            current = _scanTrigger.CurrentItem,
             enginePressure = Math.Round(AdaptiveThrottle.Pressure, 2),
             pacingMultiplier = Math.Round(AdaptiveThrottle.DelayMultiplier, 2)
         });
