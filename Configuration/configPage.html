@@ -202,6 +202,13 @@
                     </div>
                     <div class="checkboxContainer checkboxContainer-withDescription">
                         <label class="emby-checkbox-label">
+                            <input id="UseJavGuru" name="UseJavGuru" type="checkbox" is="emby-checkbox" />
+                            <span>Scrape jav.guru (gender-separated cast)</span>
+                        </label>
+                        <div class="fieldDescription">Labels Actress and Actor separately and serves English titles — a gender-aware source that also refines the collections' gender split.</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
                             <input id="UseMgstage" name="UseMgstage" type="checkbox" is="emby-checkbox" />
                             <span>Scrape MGStage</span>
                         </label>
@@ -520,6 +527,7 @@
                         document.querySelector('#UseJavMix').checked = config.UseJavMix;
                         document.querySelector('#UseJavQuick').checked = config.UseJavQuick;
                         document.querySelector('#UseJavTube').checked = config.UseJavTube;
+                        document.querySelector('#UseJavGuru').checked = config.UseJavGuru;
                         document.querySelector('#UseMgstage').checked = config.UseMgstage;
                         document.querySelector('#UseJavDb').checked = config.UseJavDb;
                         document.querySelector('#BuildCollections').checked = config.BuildCollections;
@@ -602,6 +610,7 @@
                         config.UseJavMix = document.querySelector('#UseJavMix').checked;
                         config.UseJavQuick = document.querySelector('#UseJavQuick').checked;
                         config.UseJavTube = document.querySelector('#UseJavTube').checked;
+                        config.UseJavGuru = document.querySelector('#UseJavGuru').checked;
                         config.UseMgstage = document.querySelector('#UseMgstage').checked;
                         config.UseJavDb = document.querySelector('#UseJavDb').checked;
                         config.BuildCollections = document.querySelector('#BuildCollections').checked;

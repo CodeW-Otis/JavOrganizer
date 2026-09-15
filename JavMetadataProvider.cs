@@ -218,6 +218,16 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             return video.Code;
         }
 
+        // Some sites bracket the code ("[MIAB-492] Title…", "(MIAB-492) …").
+        // Strip a leading bracketed code so the name does not repeat it, and
+        // keep the separator the site used after the bracket.
+        title = StripLeadingBracketedCode(title, video.Code);
+
+        if (title.Length == 0)
+        {
+            return video.Code;
+        }
+
         if (title.StartsWith(video.Code, StringComparison.OrdinalIgnoreCase))
         {
             return title;
@@ -225,6 +235,121 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
         return $"{video.Code} {title}";
     }
+
+    /// <summary>
+    /// Removes a leading bracketed product code from a title
+    /// ("[MIAB-492] Title", "(miab492) Title") so a built name never carries
+    /// the code twice. Untouched when the bracket holds anything else.
+    /// </summary>
+    /// <param name="title">The scraped title.</param>
+    /// <param name="code">The canonical product code.</param>
+    /// <returns>The title without a redundant leading code.</returns>
+    private static string StripLeadingBracketedCode(string title, string code)
+    {
+        if (title.Length < 2 || code.Length == 0)
+        {
+            return title;
+        }
+
+        var open = title[0];
+        var close = open switch
+        {
+            '[' => ']',
+            '(' => ')',
+            '{' => '}',
+            '【' => '】',
+            _ => '\0'
+        };
+
+        if (close == '\0')
+        {
+            return title;
+        }
+
+        var end = title.IndexOf(close, 1);
+        if (end < 0)
+        {
+            return title;
+        }
+
+        var inside = title[1..end].Trim();
+        if (!DenotesCode(inside, code))
+        {
+            return title;
+        }
+
+        return title[(end + 1)..].TrimStart(' ', '-', ':', '–', '—').TrimStart();
+    }
+
+    /// <summary>
+    /// Reports whether a bracketed token denotes the product code, allowing
+    /// for the edition/source suffixes sites append to the code they display
+    /// ("[ADN-029-MR]" for code "ADN-029").
+    /// </summary>
+    /// <param name="token">The text inside the brackets.</param>
+    /// <param name="code">The canonical product code.</param>
+    /// <returns><c>true</c> when the token is the code, optionally suffixed.</returns>
+    private static bool DenotesCode(string token, string code)
+    {
+        if (CodeEquals(token, code))
+        {
+            return true;
+        }
+
+        var compactToken = Compact(token);
+        var compactCode = Compact(code);
+        if (compactCode.Length == 0 || compactToken.Length <= compactCode.Length)
+        {
+            return false;
+        }
+
+        // The token must begin with the whole code. What follows must start a
+        // new suffix group rather than extend the number, so "[ADN-0299]" is
+        // not code "ADN-029" — but a suffix may itself begin with a digit
+        // ("[MIAB-492-4K]"), which the dash check below separates.
+        if (!compactToken.StartsWith(compactCode, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Walk past the code's letters and digits (skipping its own dash) to
+        // land on the character immediately after the code: a dash there
+        // means everything remaining is a suffix.
+        var consumed = 0;
+        var index = 0;
+        while (index < token.Length && consumed < compactCode.Length)
+        {
+            if (char.IsLetterOrDigit(token[index]))
+            {
+                consumed++;
+            }
+
+            index++;
+        }
+
+        return consumed == compactCode.Length
+            && index < token.Length
+            && token[index] == '-';
+    }
+
+    /// <summary>
+    /// Compares two code spellings ignoring case, spacing and the dash, so
+    /// "MIAB-492", "miab492" and "MIAB 492" all compare equal.
+    /// </summary>
+    /// <param name="a">First spelling.</param>
+    /// <param name="b">Second spelling.</param>
+    /// <returns><c>true</c> when both denote the same code.</returns>
+    private static bool CodeEquals(string a, string b)
+        => Compact(a).Length > 0 && Compact(a) == Compact(b);
+
+    /// <summary>
+    /// Lower-cases a value and drops every character that is not a letter or
+    /// a digit, giving a form that ignores punctuation and spacing.
+    /// </summary>
+    /// <param name="value">The value to compact.</param>
+    /// <returns>The compacted form.</returns>
+    private static string Compact(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
     /// <summary>
     /// Builds the overview block shown in the client detail view.
@@ -556,7 +681,11 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             return primary;
         }
 
-        primary.Title = PreferLatinText(primary.Title, secondary.Title);
+        // A title that is nothing but the product code carries no
+        // information: "MIAB492" must never displace a real title from
+        // another site. Such a value only stands in when no site supplied
+        // anything better.
+        primary.Title = PreferTitle(primary.Title, secondary.Title, primary.Code.Length > 0 ? primary.Code : secondary.Code);
         primary.VideoId = FirstNonEmpty(primary.VideoId ?? string.Empty, secondary.VideoId ?? string.Empty);
         primary.ReleaseDate ??= secondary.ReleaseDate;
         primary.RuntimeMinutes ??= secondary.RuntimeMinutes;
@@ -616,6 +745,54 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
         static string FirstNonEmpty(string a, string b) =>
             string.IsNullOrWhiteSpace(a) ? b : a;
+
+        // ---- Title preference ----
+
+        // Picks the more useful of two scraped titles. Preference order:
+        //   1. a real title beats a bare product code,
+        //   2. the less Japanese of the two (an English library should not
+        //      keep a Japanese-only title when another site has English),
+        //   3. otherwise the existing value (earlier site = higher priority).
+        static string PreferTitle(string a, string b, string code)
+        {
+            if (string.IsNullOrWhiteSpace(a))
+            {
+                return b;
+            }
+
+            if (string.IsNullOrWhiteSpace(b))
+            {
+                return a;
+            }
+
+            var aIsCode = IsBareCode(a, code);
+            var bIsCode = IsBareCode(b, code);
+            if (aIsCode != bIsCode)
+            {
+                return aIsCode ? b : a;
+            }
+
+            return TextCjkRatio(a) > TextCjkRatio(b) ? b : a;
+        }
+
+        // Reports whether a title carries nothing but the product code,
+        // ignoring case, spacing and the dash ("MIAB492", "miab-492",
+        // "MIAB 492", "MIAB-492").
+        static bool IsBareCode(string title, string code)
+        {
+            var compactTitle = Compact(title);
+            if (compactTitle.Length == 0)
+            {
+                return false;
+            }
+
+            var compactCode = Compact(code);
+            return compactCode.Length > 0 && compactTitle == compactCode;
+        }
+
+        // Lower-cases and drops everything that is not a letter or digit.
+        static string Compact(string value)
+            => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
         // ---- Latin-script preference ----
 

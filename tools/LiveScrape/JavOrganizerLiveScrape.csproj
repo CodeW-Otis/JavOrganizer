@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Live-network scrape harness. Deliberately separate from tools/SmokeTest,
+       which must stay offline: this one hits the real sites to answer "does
+       scraping actually work right now?".
+       Run: dotnet run  (project tools/LiveScrape)  -c Release  [code] -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>JavOrganizerLiveScrape</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RollForward>Major</RollForward>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\JavCodeParser.cs" Link="JavCodeParser.cs" />
+    <Compile Include="..\..\JavVideo.cs" Link="JavVideo.cs" />
+    <Compile Include="..\..\JavSiteCatalog.cs" Link="JavSiteCatalog.cs" />
+    <Compile Include="..\..\GenericSiteScraper.cs" Link="GenericSiteScraper.cs" />
+    <Compile Include="..\..\SiteScraper.cs" Link="SiteScraper.cs" />
+    <Compile Include="..\..\PerSiteRateLimiter.cs" Link="PerSiteRateLimiter.cs" />
+    <Compile Include="..\..\AdaptiveThrottle.cs" Link="AdaptiveThrottle.cs" />
+    <Compile Include="..\..\FlareSolverrUrls.cs" Link="FlareSolverrUrls.cs" />
+    <Compile Include="..\..\JavMetadataProvider.cs" Link="JavMetadataProvider.cs" />
+    <Compile Include="..\..\Plugin.cs" Link="Plugin.cs" />
+    <Compile Include="..\..\PluginConfiguration.cs" Link="PluginConfiguration.cs" />
+    <Compile Include="..\..\JavHttp.cs" Link="JavHttp.cs" />
+    <Compile Include="..\..\JavScraperFactory.cs" Link="JavScraperFactory.cs" />
+    <Compile Include="..\..\JavCache.cs" Link="JavCache.cs" />
+    <Compile Include="..\..\JavLibraryScraper.cs" Link="JavLibraryScraper.cs" />
+    <Compile Include="..\..\JavDbScraper.cs" Link="JavDbScraper.cs" />
+    <Compile Include="..\..\JavBusScraper.cs" Link="JavBusScraper.cs" />
+    <Compile Include="..\..\MissAvScraper.cs" Link="MissAvScraper.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.10.7" />
+    <PackageReference Include="Jellyfin.Model" Version="10.10.7" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.74" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>

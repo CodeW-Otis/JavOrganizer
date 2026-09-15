@@ -36,8 +36,46 @@ Check(JavCodeParser.ExtractCode("abp-00123.mp4") == "ABP-00123", "zero-padded ke
 Check(JavCodeParser.Normalize("ABP-00123") == "abp-123", "normalize");
 Check(JavCodeParser.ToSearchKeyword("abp00123") == "ABP-123", "search keyword");
 
+Console.WriteLine("== JavCodeParser edge cases ==");
+// Boundary and malformed inputs must never crash or invent a code.
+foreach (var (input, label) in new (string?, string)[]
+{
+    (null, "null"),
+    ("", "empty"),
+    ("   ", "whitespace"),
+    ("-", "dash only"),
+    ("---", "dashes"),
+    ("123", "digits only"),
+    ("ABC", "letters only"),
+    ("ABC-", "trailing dash"),
+    ("-123", "leading dash"),
+    ("A-1", "single letter one digit"),
+    ("ABCDEFGHIJKLMNOP-1", "very long label"),
+    ("ABC-000000000000001", "zero padded to 15 digits"),
+})
+{
+    var extracted = JavCodeParser.ExtractCode(input);
+    var normalized = JavCodeParser.Normalize(input);
+    Check(normalized.Length >= 0 && extracted is null or { Length: > 0 },
+        $"malformed input handled: {label}");
+    Check(!normalized.Contains("--", StringComparison.Ordinal),
+        $"normalized form never doubles a dash: {label}");
+}
+
+// Zero-padding is stripped to the canonical form, but a genuinely
+// zero-containing code keeps its interior zeros.
+Check(JavCodeParser.Normalize("ABC-100") == "abc-100", "interior zeros preserved");
+Check(JavCodeParser.Normalize("ABC-010") == "abc-10", "leading zero stripped");
+Check(JavCodeParser.Normalize("ABC-000") == string.Empty, "all-zero digits rejected");
+Check(JavCodeParser.Normalize("abc-123") == JavCodeParser.Normalize("ABC-00123"),
+    "padded and plain forms normalize identically");
+
+// Unicode / whitespace robustness: a code must still be found inside noise.
+Check(JavCodeParser.ExtractCode("日本語 ABC-123 タイトル.mp4") == "ABC-123", "code found amid CJK text");
+Check(JavCodeParser.ExtractCode("  ABC-123  ") == "ABC-123", "surrounding whitespace tolerated");
+
 Console.WriteLine("== JavSiteCatalog ==");
-Check(JavSiteCatalog.Sites.Count == 13, $"13 generic sites in catalog (got {JavSiteCatalog.Sites.Count})");
+Check(JavSiteCatalog.Sites.Count == 14, $"14 generic sites in catalog (got {JavSiteCatalog.Sites.Count})");
 Check(JavSiteCatalog.ToDmmCid("ABP-123") == "abp00123", "DMM cid padding");
 Check(JavSiteCatalog.ToDmmCid("T28-597") == "t2800597", "DMM cid digit label");
 Check(JavSiteCatalog.ToDmmCid("MIDE-100") == "mide00100", "DMM cid 5-digit");
@@ -76,6 +114,83 @@ Check(wpVideo?.Code == "ABP-123", $"WP code extracted (got '{wpVideo?.Code}')");
 Check(wpVideo?.ReleaseDate == new DateTime(2023, 5, 1), $"WP date (got '{wpVideo?.ReleaseDate:yyyy-MM-dd}')");
 Check(wpVideo?.CoverUrl == "https://supjav.com/wp-content/uploads/abp123.jpg", "WP og:image cover");
 Check(wpVideo?.Genres.Count == 2 && wpVideo.Genres[0] == "Creampie", "WP categories as genres");
+
+Console.WriteLine("== Result-link extraction (regression: silent 'no match') ==");
+// A result-link selector that matches nothing makes a site silently report
+// "no match" for every code while still looking healthy in the site panel —
+// which is exactly how OneJAV and javquick broke. These fixtures are trimmed
+// copies of the real markup each site family serves.
+var onejavSite = JavSiteCatalog.Sites.First(s => s.Key == "onejav");
+var onejavScraper = new GenericSiteScraper(onejavSite, logger);
+// OneJAV serves <div class="card"> tiles; there is no <article> anywhere.
+var onejavSearchHtml = """
+<html><head><title>MIAB-492 - OneJAV</title></head><body>
+<div class="card mb-3">
+  <div class="container"><div class="columns"><div class="column is-5">
+    <div class="card-content"><h5 class="title is-4 is-spaced">
+      <a href="/torrent/miab492">MIAB492</a><span>5.0 GB</span>
+    </h5></div>
+  </div></div></div>
+</div>
+<div class="card mb-3">
+  <div class="container"><div class="columns"><div class="column is-5">
+    <div class="card-content"><h5 class="title is-4 is-spaced">
+      <a href="/torrent/ssis448">SSIS448</a>
+    </h5></div>
+  </div></div></div>
+</div>
+</body></html>
+""";
+var onejavDoc = new HtmlDocument();
+onejavDoc.LoadHtml(onejavSearchHtml);
+var onejavLinks = onejavDoc.DocumentNode
+    .SelectNodes(onejavSite.Selectors.ResultLinks)?
+    .Select(n => n.GetAttributeValue("href", string.Empty))
+    .Where(h => h.Length > 0)
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToList() ?? [];
+Check(onejavLinks.Count > 0,
+    $"OneJAV result links found in article-less markup (got {onejavLinks.Count})");
+Check(onejavLinks.Any(h => h.Contains("miab492", StringComparison.OrdinalIgnoreCase)),
+    $"OneJAV finds the wanted code's tile (got [{string.Join(", ", onejavLinks)}])");
+
+// javquick wraps <article> but its anchor is a bare child, not nested in an h2.
+var javquickSite = JavSiteCatalog.Sites.First(s => s.Key == "javquick");
+var javquickSearchHtml = """
+<html><head><title>Search</title></head><body>
+<article class="bg-gray-700 rounded-lg shadow-md overflow-hidden">
+  <a href="/movie/BLDSegsrU/juy-682-my-sister-in-law" rel="bookmark" class="block">
+    <div class="image-wrapper relative"><img class="movie-image" src="https://x/y.jpg" alt="t"></div>
+  </a>
+  <div class="p-4"><h2 title="JUY-682 My Sister In Law">JUY-682</h2></div>
+</article>
+</body></html>
+""";
+var javquickDoc = new HtmlDocument();
+javquickDoc.LoadHtml(javquickSearchHtml);
+var javquickLinks = javquickDoc.DocumentNode
+    .SelectNodes(javquickSite.Selectors.ResultLinks)?
+    .Select(n => n.GetAttributeValue("href", string.Empty))
+    .Where(h => h.Length > 0)
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToList() ?? [];
+Check(javquickLinks.Count > 0,
+    $"javquick result links found with a bare anchor in <article> (got {javquickLinks.Count})");
+
+// Every catalog site must be able to surface *some* link shape; a selector
+// that cannot match any of the known families is a silent dead site.
+Check(!string.IsNullOrWhiteSpace(onejavSite.Selectors.ResultLinks)
+    && !string.IsNullOrWhiteSpace(javquickSite.Selectors.ResultLinks),
+    "every search-mode site defines result links");
+Check(onejavSite.Mode == SiteUrlMode.Search && onejavSite.Selectors.ResultLinks.Contains("/torrent/", StringComparison.Ordinal),
+    "OneJAV keeps its /torrent/ link anchor");
+
+Console.WriteLine("== Search-mode sites all expose a usable selector ==");
+foreach (var s in JavSiteCatalog.Sites.Where(s => s.Mode == SiteUrlMode.Search))
+{
+    Check(!string.IsNullOrWhiteSpace(s.Selectors.ResultLinks),
+        $"{s.Key} has result links");
+}
 
 Console.WriteLine("== GenericSiteScraper.ParseVideoPage (JavBus template / JavLand) ==");
 var javlandScraper = new GenericSiteScraper(javland, logger);
@@ -437,6 +552,138 @@ Check(personPrefixes.Distinct(StringComparer.Ordinal).Count() == 2, "performer p
 Check("Actress: Mina Kitano".StartsWith(personPrefixes[0], StringComparison.OrdinalIgnoreCase),
     "an actress collection name carries its prefix");
 
+Console.WriteLine("== Ban-page detection (regression: false positives disable a site) ==");
+// A false positive here costs a site for six hours on every scrape — which
+// is exactly what jav.guru's comment-widget strings caused. A false
+// negative means the plugin keeps hammering an address the site banned.
+foreach (var html in new[]
+{
+    "Your access to this site has been banned.",
+    "We have banned your access due to abuse.",
+    "Your IP has been blocked.",
+    "Access to this page has been denied.",
+    "Access to this site has been blocked.",
+    "禁止了你的訪問",
+    "Your address has been banned from this server.",
+    "Your IP is blocked.",
+})
+{
+    Check(SiteScraper.IsBanPage(html), $"ban page detected: {html}");
+}
+
+foreach (var html in new[]
+{
+    "\"wc_rate_limit_exceeded\":\"Too many requests. Please slow down.\"",
+    "Some content may be access denied in your region",
+    "Runtime error: request failed with 429 too many requests",
+    "This site uses cookies. Please accept to continue.",
+    "<a href=\"/banned\">Banned users list</a>",
+})
+{
+    Check(!SiteScraper.IsBanPage(html), $"not a ban page: {html}");
+}
+
+Console.WriteLine("== Bracket-wrapped code in titles ==");
+// Several sites head their pages with "[CODE] Title"; the built name must
+// not repeat the code. Sites also append edition suffixes to that code
+// ("[ADN-029-MR]", "[SSIS-448-SUB]"), which must still be recognised as the
+// code rather than a different video.
+foreach (var (title, code, want, label) in new (string, string, string, string)[]
+{
+    ("[MIAB-492] My Practice Dummy", "MIAB-492", "MIAB-492 My Practice Dummy", "plain bracketed code"), 
+    ("(miab492) My Practice Dummy", "MIAB-492", "MIAB-492 My Practice Dummy", "glued parenthesised code"),
+    ("[MIAB-492]", "MIAB-492", "MIAB-492", "title that is only the bracketed code"),
+    ("[ABP-901] Plain Title", "ABP-901", "ABP-901 Plain Title", "bracketed code with digits"),
+    ("[ABC-12] Short", "ABC-12", "ABC-12 Short", "short digit group"),
+    ("【MIAB-492】 CJK brackets", "MIAB-492", "MIAB-492 CJK brackets", "CJK bracket pair"),
+    ("[ADN-029-MR] Honey, Forgive Me", "ADN-029", "ADN-029 Honey, Forgive Me", "edition suffix stripped"),
+    ("[SSIS-448-SUB] Subbed Title", "SSIS-448", "SSIS-448 Subbed Title", "subtitle suffix stripped"),
+    ("[MIAB-492-4K] Both", "MIAB-492", "MIAB-492 Both", "digit-leading suffix stripped"),
+    ("[4K] My Practice Dummy", "MIAB-492", "MIAB-492 [4K] My Practice Dummy", "non-code bracket kept"),
+    ("[ADN-0299] Different Video", "ADN-029", "ADN-029 [ADN-0299] Different Video", "longer number is a different video"),
+    ("[XYZ-999] Unrelated", "MIAB-492", "MIAB-492 [XYZ-999] Unrelated", "another code is kept"),
+    ("[MIAB-4920] Longer number", "MIAB-492", "MIAB-492 [MIAB-4920] Longer number", "extended number is a different video"),
+})
+{
+    var built = JavMetadataProvider.BuildName(new JavVideo { Code = code, Title = title });
+    Check(built == want, $"{label} (got '{built}')");
+}
+
+Console.WriteLine("== Search-keyword variants (zero-padded catalogues) ==");
+// The canonical keyword is zero-free ("ADN-29"), but some sites only index
+// the padded spelling ("ADN-029"). Both must find the same video's URL.
+var paddedUrl = "https://jav.guru/119571/adn-029-honey-forgive-me-the-rekindling-of-love-kaori/";
+Check(GenericSiteScraper.UrlMentionsCode(paddedUrl, "adn-29"), "padded URL matches a zero-free code");
+Check(GenericSiteScraper.UrlMentionsCode("https://x/adn029", "adn-29"), "glued URL matches a zero-free code");
+Check(GenericSiteScraper.UrlMentionsCode("https://x/adn-29", "adn-29"), "canonical URL matches");
+Check(!GenericSiteScraper.UrlMentionsCode("https://x/adn-030", "adn-29"), "a different code does not match");
+Check(!GenericSiteScraper.UrlMentionsCode("https://x/abp-901", "adn-29"), "an unrelated code does not match");
+
+Console.WriteLine("== Title merge: a bare code never beats a real title ==");
+var realTitle = new JavVideo { Code = "MIAB-492", Title = "MIAB-492 My Practice Dummy" };
+var codeOnlyTitle = new JavVideo { Code = "MIAB-492", Title = "MIAB492" };
+var preferReal = JavMetadataProvider.Merge(codeOnlyTitle, realTitle)!;
+Check(preferReal.Title == "MIAB-492 My Practice Dummy",
+    $"real title wins over a bare code (got '{preferReal.Title}')");
+var preferRealReversed = JavMetadataProvider.Merge(realTitle, codeOnlyTitle)!;
+Check(preferRealReversed.Title == "MIAB-492 My Practice Dummy",
+    $"bare code never replaces a real title (got '{preferRealReversed.Title}')");
+
+Console.WriteLine("== Site-name titles are rejected ==");
+// OneJAV's og:title is the literal string "OneJAV"; merging that would put
+// the site's name in the library as a video title.
+var onejavSiteForTitle = JavSiteCatalog.Sites.First(s => s.Key == "onejav");
+var onejavTitleScraper = new GenericSiteScraper(onejavSiteForTitle, logger);
+var siteNameHtml = """
+<html><head>
+  <meta property="og:title" content="OneJAV" />
+  <meta property="og:image" content="https://onejav.com/x.jpg" />
+</head><body><h1>nothing here</h1></body></html>
+""";
+var siteNameDoc = new HtmlDocument();
+siteNameDoc.LoadHtml(siteNameHtml);
+var siteNameVideo = onejavTitleScraper.ParseVideoPage(siteNameDoc, siteNameHtml, "MIAB-492");
+Check(siteNameVideo is null,
+    "a page whose only title is the site's own name is rejected");
+
+Console.WriteLine("== jav.guru catalog entry ==");
+var javGuru = JavSiteCatalog.Sites.FirstOrDefault(s => s.Key == "javguru");
+Check(javGuru is not null, "jav.guru is in the catalog");
+Check(javGuru?.BaseUrl == "https://jav.guru/", $"jav.guru base URL (got '{javGuru?.BaseUrl}')");
+Check(javGuru?.Mode == SiteUrlMode.Search, "jav.guru is a search-mode site");
+Check(javGuru?.SearchPath("MIAB-492") == "?s=MIAB-492", $"jav.guru search URL (got '{javGuru?.SearchPath("MIAB-492")}')");
+Check(!string.IsNullOrWhiteSpace(javGuru?.Selectors.ResultLinks), "jav.guru defines result links");
+Check(!string.IsNullOrWhiteSpace(javGuru?.Selectors.MaleActors), "jav.guru separates male actors");
+Check(!string.IsNullOrWhiteSpace(javGuru?.Selectors.Actresses), "jav.guru separates actresses");
+Check(PluginConfiguration_Probe.HasJavGuruToggle(), "jav.guru has a configuration toggle");
+
+Console.WriteLine("== Page-code verification (regression: variant suffixes) ==");
+// Sites append edition/source suffixes to the code they display
+// ("[ADN-029-MR]"), which normalizes to "adn-029-mr". A strict equality
+// check discarded those pages as mismatches even though they are the right
+// video — jav.guru's whole catalogue is published this way.
+foreach (var (pageCode, requested, expected, label) in new (string, string, bool, string)[]
+{
+    ("adn-029-mr", "adn-029", true, "MR edition suffix accepted"),
+    ("adn-029", "adn-029-mr", true, "requested variant accepted"),
+    ("abp-901", "abp-901", true, "identical codes accepted"),
+    ("", "abp-901", true, "page with no code is not rejected"),
+    ("abp-901", "", true, "no requested code is not rejected"),
+    ("adn-029", "adn-030", false, "different number rejected"),
+    ("adn-029", "adn-0299", false, "longer number rejected"),
+    ("abp-901", "abp-9011", false, "padded-lookalike rejected"),
+    ("abc-12", "abc-123", false, "shorter number rejected"),
+    ("ssis-448", "ssis-44", false, "truncated number rejected"),
+})
+{
+    var actual = GenericSiteScraper.CodesAgree(pageCode, requested);
+    Check(actual == expected,
+        $"{label} (page='{pageCode}' req='{requested}' -> {actual})");
+}
+
+Console.WriteLine("== FlareSolverr URL override (test harness seam) ==");
+Check(FlareSolverrUrls.UrlOverrideVariable.Length > 0, "the override variable is named");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -497,5 +744,25 @@ internal static class FlareSolverrUrls_Tests
     {
         var method = typeof(FlareSolverrUrls).GetMethod("NormalizeApiUrl", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         return method?.Invoke(null, [configured]) as string;
+    }
+}
+
+/// <summary>Checks the jav.guru configuration toggle is wired up.</summary>
+internal static class PluginConfiguration_Probe
+{
+    /// <summary>
+    /// Reports whether the configuration exposes a jav.guru toggle that the
+    /// site catalog reads.
+    /// </summary>
+    /// <returns><c>true</c> when the toggle exists and defaults to on.</returns>
+    internal static bool HasJavGuruToggle()
+    {
+        var property = typeof(PluginConfiguration).GetProperty("UseJavGuru");
+        if (property is null || property.PropertyType != typeof(bool))
+        {
+            return false;
+        }
+
+        return new PluginConfiguration().UseJavGuru;
     }
 }

@@ -33,6 +33,7 @@ public class PluginConfiguration : BasePluginConfiguration
         UseJavMix = true;
         UseJavQuick = true;
         UseJavTube = true;
+        UseJavGuru = true;
         UseMgstage = true;
         AutoScanOnStartup = true;
         MaxConcurrentScrapes = 4;
@@ -165,6 +166,14 @@ public class PluginConfiguration : BasePluginConfiguration
     /// (WordPress-style search + detail pages).
     /// </summary>
     public bool UseJavTube { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether jav.guru is scraped.
+    /// jav.guru labels its cast by gender ("Actress:" / "Actor:") and serves
+    /// English titles, so it both fills gaps and refines the gender split
+    /// used by the performer collections.
+    /// </summary>
+    public bool UseJavGuru { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether MGStage is scraped — the

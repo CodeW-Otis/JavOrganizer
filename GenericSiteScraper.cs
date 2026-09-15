@@ -68,7 +68,80 @@ public sealed partial class GenericSiteScraper : SiteScraper
         }
 
         // Search mode: query, then follow result links mentioning the code.
-        var searchHtml = await GetHtmlAsync(_site.SearchPath(keyword), ct).ConfigureAwait(false);
+        // The canonical keyword is zero-free ("ADN-29"), but some sites only
+        // index the zero-padded spelling of the same code ("ADN-029") — a
+        // search for the canonical form then returns their whole catalogue
+        // and the code is never found. Each spelling is tried until one
+        // yields a page that verifies.
+        foreach (var searchKeyword in SearchKeywords(keyword))
+        {
+            if (ct.IsCancellationRequested)
+            {
+                break;
+            }
+
+            var video = await SearchAndFollowAsync(searchKeyword, normalized, code, ct).ConfigureAwait(false);
+            if (video is not null)
+            {
+                return video;
+            }
+        }
+
+        Logger.LogDebug("{Site}: no result page matched code '{Code}'", SiteName, code);
+        return null;
+    }
+
+    /// <summary>
+    /// Enumerates the spellings to send to a site's search box: the canonical
+    /// zero-free keyword first (the form most indexes use), then the
+    /// zero-padded variants when the code's digits are short enough to have
+    /// one.
+    /// </summary>
+    /// <param name="keyword">Canonical uppercase keyword, e.g. "ADN-29".</param>
+    /// <returns>Distinct keywords to try, in order.</returns>
+    private static IEnumerable<string> SearchKeywords(string keyword)
+    {
+        yield return keyword;
+
+        var dash = keyword.LastIndexOf('-');
+        if (dash <= 0 || dash == keyword.Length - 1)
+        {
+            yield break;
+        }
+
+        var label = keyword[..dash];
+        var digits = keyword[(dash + 1)..];
+        if (!digits.All(char.IsDigit))
+        {
+            yield break;
+        }
+
+        // Pad to the widths these catalogs actually publish (3 and 5).
+        foreach (var width in new[] { 3, 5 })
+        {
+            if (digits.Length < width)
+            {
+                yield return $"{label}-{digits.PadLeft(width, '0')}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Runs one search query and follows the result links that mention the
+    /// code, returning the first page that parses and verifies.
+    /// </summary>
+    /// <param name="searchKeyword">Keyword to send to the site.</param>
+    /// <param name="normalized">Canonical code being searched for.</param>
+    /// <param name="requestedCode">Original code spelling, for diagnostics.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The verified record, or <c>null</c>.</returns>
+    private async Task<JavVideo?> SearchAndFollowAsync(
+        string searchKeyword,
+        string normalized,
+        string requestedCode,
+        CancellationToken ct)
+    {
+        var searchHtml = await GetHtmlAsync(_site.SearchPath(searchKeyword), ct).ConfigureAwait(false);
         if (searchHtml is null)
         {
             return null;
@@ -100,14 +173,13 @@ public sealed partial class GenericSiteScraper : SiteScraper
                 continue;
             }
 
-            var video = ParseAndVerify(html, normalized, code);
+            var video = ParseAndVerify(html, normalized, requestedCode);
             if (video is not null)
             {
                 return video;
             }
         }
 
-        Logger.LogDebug("{Site}: no result page matched code '{Code}'", SiteName, code);
         return null;
     }
 
@@ -127,7 +199,38 @@ public sealed partial class GenericSiteScraper : SiteScraper
         }
 
         var pageCode = JavCodeParser.Normalize(video.Code);
-        return pageCode.Length == 0 || pageCode == normalized ? video : null;
+        return CodesAgree(pageCode, normalized) ? video : null;
+    }
+
+    /// <summary>
+    /// Reports whether a page's own code denotes the requested one. Sites
+    /// append edition and source suffixes to the code they display
+    /// ("[ADN-029-MR]"), which the parser reads as part of the number — a
+    /// strict comparison discarded those pages even though they are the
+    /// right video. The match therefore also accepts the page code whose
+    /// leading label-and-number equals the requested code.
+    /// </summary>
+    /// <param name="pageCode">Normalized code read from the page.</param>
+    /// <param name="requested">Normalized code being searched for.</param>
+    /// <returns><c>true</c> when the page is the requested video.</returns>
+    internal static bool CodesAgree(string pageCode, string requested)
+    {
+        if (pageCode.Length == 0 || requested.Length == 0)
+        {
+            // Nothing to compare against; the caller's title check already
+            // rejected error pages.
+            return true;
+        }
+
+        if (string.Equals(pageCode, requested, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Same label and leading digits, extra suffix on the page side:
+        // "adn-029-mr" is the "-MR" edition of "adn-029".
+        return pageCode.StartsWith(requested + "-", StringComparison.OrdinalIgnoreCase)
+            || requested.StartsWith(pageCode + "-", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -147,6 +250,18 @@ public sealed partial class GenericSiteScraper : SiteScraper
         var title = FirstNonEmpty(
             SelectNodeText(doc, selectors.Title),
             SelectMetaContent(doc, "og:title"));
+
+        // A bare site name is never a video title. Several sites set
+        // og:title to their own brand ("OneJAV"), and merging that into the
+        // library would replace a real scraped title with the site's name —
+        // so such a value is treated as "this site has no title" and the
+        // remaining sites supply one.
+        if (IsSiteNameTitle(title))
+        {
+            Logger.LogDebug("{Site}: title '{Title}' is the site's own name; ignoring it", SiteName, title);
+            title = string.Empty;
+        }
+
         if (string.IsNullOrWhiteSpace(title) || IsErrorTitle(title))
         {
             // An error/interstitial page (CloudFront "403 ERROR", a parked
@@ -263,6 +378,70 @@ public sealed partial class GenericSiteScraper : SiteScraper
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Reports whether a scraped title is really the site's own brand name
+    /// rather than a video title. Sites commonly set <c>og:title</c> to their
+    /// brand, and a record whose "title" is the site name would overwrite a
+    /// genuine title during the merge.
+    /// </summary>
+    /// <param name="title">Candidate title.</param>
+    /// <returns><c>true</c> when the value is just the site's name.</returns>
+    private bool IsSiteNameTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        var value = title.Trim();
+
+        // Compare against the display name, the key, the base host and the
+        // host's first label, all with punctuation and spacing removed so
+        // "Jav GG", "javgg", "JavGG.net" and "JavGG" all collapse together.
+        var candidates = new[]
+        {
+            _site.DisplayName,
+            _site.Key,
+            _site.BaseUrl
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            var host = candidate;
+            if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+            {
+                host = uri.Host;
+                var dot = host.IndexOf('.');
+                if (dot > 0)
+                {
+                    host = host[..dot];
+                }
+            }
+
+            var normalizedTitle = NormalizeForComparison(value);
+            if (normalizedTitle.Length == 0)
+            {
+                continue;
+            }
+
+            if (normalizedTitle == NormalizeForComparison(candidate)
+                || normalizedTitle == NormalizeForComparison(host))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static string NormalizeForComparison(string value)
+            => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
     }
 
     /// <summary>
@@ -396,13 +575,65 @@ public sealed partial class GenericSiteScraper : SiteScraper
     }
 
     /// <summary>
-    /// Reports whether a result URL mentions the requested code, in either
-    /// the "abp-123" or glued "abp123" spelling.
+    /// Reports whether a result URL mentions the requested code. Sites spell
+    /// codes with and without the dash and with and without zero padding
+    /// ("adn-029", "adn029", "adn-29"), so every combination is accepted.
     /// </summary>
-    private static bool UrlMentionsCode(string url, string normalized)
+    /// <param name="url">Candidate result URL.</param>
+    /// <param name="normalized">Canonical (zero-free) code being searched for.</param>
+    /// <returns><c>true</c> when the URL names the code.</returns>
+    internal static bool UrlMentionsCode(string url, string normalized)
     {
-        var glued = normalized.Replace("-", string.Empty, StringComparison.Ordinal);
-        return url.Contains(normalized, StringComparison.OrdinalIgnoreCase)
-            || url.Contains(glued, StringComparison.OrdinalIgnoreCase);
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
+        var dash = normalized.LastIndexOf('-');
+        var label = dash > 0 ? normalized[..dash] : normalized;
+        var digits = dash > 0 ? normalized[(dash + 1)..] : string.Empty;
+
+        foreach (var candidate in CodeSpellings(label, digits))
+        {
+            if (candidate.Length > 0 && url.Contains(candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Enumerates the spellings a code can appear in inside a URL: the
+    /// canonical form, the glued form, and both again with the digits
+    /// zero-padded (sites and their permalinks disagree about padding —
+    /// jav.guru links "adn-029" for the canonical code "adn-29").
+    /// </summary>
+    /// <param name="label">Code letters.</param>
+    /// <param name="digits">Canonical digit group (zero-free).</param>
+    /// <returns>Distinct spellings to look for.</returns>
+    private static IEnumerable<string> CodeSpellings(string label, string digits)
+    {
+        if (digits.Length == 0)
+        {
+            yield return label;
+            yield break;
+        }
+
+        yield return $"{label}-{digits}";
+        yield return $"{label}{digits}";
+
+        // Zero-padded to the widths these sites actually use (3 and 5 are
+        // the common DMM/catalog widths).
+        foreach (var width in new[] { 3, 5 })
+        {
+            if (digits.Length < width)
+            {
+                var padded = digits.PadLeft(width, '0');
+                yield return $"{label}-{padded}";
+                yield return $"{label}{padded}";
+            }
+        }
     }
 }

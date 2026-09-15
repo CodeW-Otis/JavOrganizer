@@ -4,12 +4,12 @@
 
 # JavOrganizer
 
-**🎬 JAV metadata plugin for Jellyfin. Scrapes up to 18 sites concurrently with built-in rate limiting and retries.**
+**🎬 JAV metadata plugin for Jellyfin. Scrapes up to 19 sites concurrently with built-in rate limiting and retries.**
 
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.4.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -25,7 +25,7 @@ https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
 
 > 📋 **Click the copy button** (top-right of the box above) then paste into **Dashboard → Plugins → Repositories → ➕**
 
-**[→ Full install guide below](#-installation)** · [Quick Start (5 min)](QUICKSTART.md) · [The 18 sites](#the-18-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+**[→ Full install guide below](#-installation)** · [Quick Start (5 min)](QUICKSTART.md) · [The 19 sites](#the-19-sites) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
 **⭐ If you find this plugin helpful, please star the repo!**
 
@@ -53,7 +53,7 @@ https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
   </tr>
 </table>
 
-JavOrganizer identifies Japanese adult video files by looking for the product code in the file name (e.g., `SSIS-406.mp4`). It can scrape up to 18 websites at the same time for each code, including JavLibrary, JavDB, JavBus, MissAV, OneJAV, and FANZA. It then merges the data from these sites into Jellyfin.
+JavOrganizer identifies Japanese adult video files by looking for the product code in the file name (e.g., `SSIS-406.mp4`). It can scrape up to 19 websites at the same time for each code, including JavLibrary, JavDB, JavBus, MissAV, OneJAV, and FANZA. It then merges the data from these sites into Jellyfin.
 
 | What you get | How it works |
 |---|---|
@@ -79,7 +79,7 @@ It supports Jellyfin 10.8 through 12.0, with a dedicated build for each version 
 
 1. [Fixing missing metadata issues](#fixing-missing-metadata-issues)
 2. [How it works](#how-it-works)
-3. [The 18 sites](#the-18-sites)
+3. [The 19 sites](#the-19-sites)
 4. [Rate limiting and scraping behavior](#rate-limiting-and-scraping-behavior)
 5. [Scanning: automatic and manual](#scanning-automatic-and-manual)
 6. [Filename conventions](#filename-conventions)
@@ -135,11 +135,11 @@ filename ──► JavCodeParser.ExtractCode ──► "ABP-123"
                                                │
              ┌────────────┬────────────┬──────┴─────┬──────────────┐
              ▼            ▼            ▼            ▼              ▼
-        JavLibrary     JavDB        JavBus    MissAV family   14 catalog sites
+        JavLibrary     JavDB        JavBus    MissAV family   15 catalog sites
         (baseline)   (genders)   (fast, direct) (genders)   (OneJAV, FANZA ×2,
                                                JavLand, 123AV, SEXTB, SupJav,
                                                JavGG, JavSeen, JavMix, JavQuick,
-                                               JavTube, MGStage)
+                                               JavTube, jav.guru, MGStage)
              │            │            │            │              │
              └────────────┴─────┬──────┴────────────┴──────────────┘
                                 ▼
@@ -168,7 +168,8 @@ When scanning a video, the plugin queries multiple enabled sites concurrently. T
 | 10 | 123AV | 75 | Cast metadata | on |
 | 11 | SEXTB | 80 | Streaming pages | on |
 | 12-17 | WordPress sites | 90 | SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube | on |
-| 18 | MGStage | 150 | Amateur labels | on |
+| 18 | jav.guru | 85 | Gender-labeled cast (Actress/Actor) and English titles | on |
+| 19 | MGStage | 150 | Amateur labels | on |
 
 You can toggle each site on or off in the plugin settings.
 
@@ -497,6 +498,60 @@ carrying a poster, and all three levels (card → performer → videos) browsing
 correctly.
 
 ## 📋 Changelog
+
+### 1.5.0
+
+This release came out of an exhaustive end-to-end test of every function
+against the live sites. Six real defects were found and fixed, and
+**jav.guru** joined the site list.
+
+- **New site: jav.guru** — labels its cast by gender (*Actress:* /
+  *Actor:*) and serves English titles, so it both fills gaps and refines the
+  gender split the performer collections rely on. Verified live: it supplies
+  the male actor for titles where JavBus alone has none.
+- **Zero-padded codes now match everywhere.** Sites disagree about padding:
+  the canonical code is zero-free (`ADN-29`) while permalinks and search
+  indexes use the padded spelling (`adn-029`). Three separate places compared
+  them literally, so a correct page was downloaded and then thrown away.
+  Result-link matching, the search keyword, and page-code verification all
+  accept every spelling now.
+- **Ban detection no longer fires on innocent text.** The ban pattern matched
+  the bare phrases `access denied` and `too many requests`, which sites embed
+  in JavaScript localisation tables. jav.guru ships `"Too many requests.
+  Please slow down."` for its comment widget, so it was marked banned and
+  skipped for six hours on *every* scrape. The pattern now requires an
+  explicit statement that this address was blocked, and a regression test
+  pins both directions (8 real ban phrasings accepted, 5 innocent strings
+  rejected).
+- **OneJAV and javquick returned nothing at all.** Both had result-link
+  selectors that could not match their real markup: OneJAV serves
+  `<div class="card">` tiles with no `<article>` element anywhere, and
+  javquick wraps results in an `<article>` whose anchor is a bare child
+  rather than nested in an `<h2>`. Each matched zero links and reported
+  "no match" for every code while still looking healthy.
+- **A bare product code no longer beats a real title.** OneJAV publishes no
+  descriptive title — its `og:title` is the literal string `OneJAV` and its
+  only heading is the code — so `MIAB492` could win the merge over a real
+  English title from JavDB. Titles that are only the code now lose to any
+  real title, and a page whose only title is the site's own name is rejected.
+- **Bracketed codes with edition suffixes.** Sites head pages with
+  `[ADN-029-MR] Title`; the name builder added the code again, producing
+  `ADN-029 [ADN-029-MR] Title`. A leading bracket that denotes the code —
+  including a suffixed edition — is now stripped, while a *different*
+  video's code in brackets (`[ADN-0299]`) is left alone.
+- **Test suite grown from 117 to 212 checks**, adding ban-detection
+  boundaries, result-link extraction for the markup shapes that broke, code
+  normalisation edge cases (null, empty, malformed, 15-digit padding), the
+  bracket/edition cases, and zero-padding agreement.
+- **New live-network harness** (`tools/LiveScrape`) that scrapes real sites
+  and reports per-site reachability and parsed fields. It reads the server's
+  own FlareSolverr setting, so it reproduces what the plugin actually does
+  rather than reporting every Cloudflare site as blocked.
+
+Verified on a live Jellyfin 12.0.0 server: 18 of 19 sites reachable and 9
+returning data for a sample code, with the collections (191 actress cards,
+7 actor cards, 198/198 performer posters) and all three nesting levels
+intact after the changes.
 
 ### 1.4.0
 

@@ -34,23 +34,23 @@ In Jellyfin: go to **Dashboard → Plugins → Repositories → ➕**, paste the
 
 | Your Jellyfin | Download |
 |---|---|
-| 12.0.x | `JavOrganizer-120-v1.4.0.0.zip` |
-| 10.11.x | `JavOrganizer-1011-v1.4.0.0.zip` |
-| 10.10.x | `JavOrganizer-1010-v1.4.0.0.zip` |
-| 10.9.x | `JavOrganizer-109-v1.4.0.0.zip` |
-| 10.8.x | `JavOrganizer-108-v1.4.0.0.zip` |
+| 12.0.x | `JavOrganizer-120-v1.5.0.0.zip` |
+| 10.11.x | `JavOrganizer-1011-v1.5.0.0.zip` |
+| 10.10.x | `JavOrganizer-1010-v1.5.0.0.zip` |
+| 10.9.x | `JavOrganizer-109-v1.5.0.0.zip` |
+| 10.8.x | `JavOrganizer-108-v1.5.0.0.zip` |
 
 Grab the correct zip from the [Releases](../../releases/latest) page, then:
 
 1. Extract the zip **contents** directly into `{Jellyfin data}/plugins/JavOrganizer/`
    (Windows: `%LocalAppData%\Jellyfin\plugins\JavOrganizer\` — Linux: `/var/lib/jellyfin/plugins/JavOrganizer/`).
 2. Restart Jellyfin.
-3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.4.0* is listed.
+3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.5.0* is listed.
 
 > [!CAUTION]
 > **Critical Step:** Make sure you extract the zip contents *into* the `JavOrganizer` folder, not a subfolder inside it.
 
-✅ **Success check:** JavOrganizer 1.4.0 should now show up in **Dashboard → Plugins**.
+✅ **Success check:** JavOrganizer 1.5.0 should now show up in **Dashboard → Plugins**.
 
 ---
 

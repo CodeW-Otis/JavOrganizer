@@ -148,7 +148,13 @@ internal static class JavSiteCatalog
         Genres = "//a[@rel='category tag']|//a[contains(@href,'/category/')]",
         Cover = "//meta[@property='og:image']",
         Code = "//meta[@property='og:title']",
-        ResultLinks = "//article//h2//a[@href]|//article//h3//a[@href]|//h2[@class='entry-title']//a[@href]"
+        // Themes differ in where the result link sits: some nest it inside an
+        // h2/h3, others put a bare anchor directly in the article (javquick)
+        // or drop the <article> wrapper entirely (javtube). Requiring any one
+        // of those shapes by itself matched nothing on part of the family, so
+        // every shape is accepted and the caller still filters the candidates
+        // down to URLs that actually mention the requested code.
+        ResultLinks = "//article//h2//a[@href]|//article//h3//a[@href]|//h2[@class='entry-title']//a[@href]|//article//a[@href]|//h2//a[@href]"
     };
 
     /// <summary>WordPress-family search sites.</summary>
@@ -180,13 +186,23 @@ internal static class JavSiteCatalog
             SearchPath = code => $"search/{Uri.EscapeDataString(code)}",
             Selectors = new SiteSelectors
             {
-                Title = "//h1[@class='title']|//a[contains(@class,'title')]",
+                // OneJAV's detail pages carry no descriptive title: the only
+                // heading is the bare code, and its og:title is the site name
+                // ("OneJAV"). Falling back to og:title therefore merged the
+                // literal string "OneJAV" into the library as a video title.
+                // The code-bearing heading is used instead, and the cleaner
+                // rejects a title that is just the site name.
+                Title = "//h5[contains(@class,'title')]//a|//h1[@class='title']|//a[contains(@class,'title')]",
                 Cover = "//meta[@property='og:image']",
                 Date = "//time",
                 DateAttribute = "datetime",
                 Genres = "//a[contains(@href,'/tag/')]",
                 Actresses = "//a[contains(@href,'/actor/')]",
-                ResultLinks = "//article//a[contains(@class,'title')][@href]|//article//a[contains(@href,'/torrent/')]",
+                // OneJAV renders results as <div class="card"> tiles, NOT
+                // <article> — requiring an <article> ancestor matched nothing
+                // at all, so this site silently returned "no match" for every
+                // code. The plain /torrent/ link form is the reliable anchor.
+                ResultLinks = "//article//a[contains(@class,'title')][@href]|//article//a[contains(@href,'/torrent/')]|//a[contains(@href,'/torrent/')]",
                 IdPattern = @"onejav\.com/torrent/([a-z0-9]+)"
             }
         },
@@ -329,6 +345,50 @@ internal static class JavSiteCatalog
         // ---------------- JavTube ------------------------------------------------------
         WpSite("javtube", "JavTube", "https://javtube.com/", "?s="),
 
+        // ---------------- jav.guru (gender-separated cast, English titles) --------------
+        // jav.guru labels cast by gender ("Actress:" / "Actor:") inside a
+        // definition list and carries an English title plus a JSON-LD
+        // datePublished, so it both fills gaps and refines gender for the
+        // hand-written sites. Results are plain WordPress posts whose links
+        // sit in an entry-title heading.
+        new SiteDefinition
+        {
+            Key = "javguru",
+            DisplayName = "jav.guru",
+            BaseUrl = "https://jav.guru/",
+            Mode = SiteUrlMode.Search,
+            Priority = 85,
+            SearchPath = code => $"?s={Uri.EscapeDataString(code)}",
+            Selectors = new SiteSelectors
+            {
+                // The heading carries the English title with the code in
+                // brackets ("[MIAB-492] Title…"); BuildName strips the
+                // redundant bracketed code so the name is not doubled.
+                Title = "//h1[contains(@class,'titl')]|//h1[contains(@class,'entry-title')]|//h1",
+
+                // The cover lives in the post body as a "…pl.jpg" image; the
+                // page exposes no og:image at all.
+                Cover = "//article//img[contains(@src,'pl.jpg')]|//img[contains(@src,'pl.jpg')]",
+
+                // No og:title meta on this site, so the code is verified from
+                // the heading instead (the caller only compares a non-empty
+                // code, and the heading starts with it).
+                Code = "//h1[contains(@class,'titl')]|//h1",
+                Genres = "//a[contains(@href,'/tag/')]|//a[contains(@href,'/category/')]",
+
+                // jav.guru separates the cast by label, which is what makes
+                // it valuable alongside the sites that do not.
+                Actresses = "//li[strong[contains(text(),'Actress')]]//a|//strong[contains(text(),'Actress')]/following-sibling::a[1]",
+                MaleActors = "//li[strong[contains(text(),'Actor')]]//a|//strong[contains(text(),'Actor')]/following-sibling::a[1]",
+                Maker = "//a[contains(@href,'/maker/')]",
+                Label = "//a[contains(@href,'/series/')]",
+
+                // Result links: posts whose heading anchors at the permalink.
+                ResultLinks = "//h2[contains(@class,'entry-title')]//a[@href]|//article//h2//a[@href]|//article//h3//a[@href]|//h2//a[@href]|//article//a[@href]",
+                IdPattern = @"jav\.guru/(\d+)/"
+            }
+        },
+
         // ---------------- MGStage (official amateur-label store) ------------------------
         new SiteDefinition
         {
@@ -370,6 +430,7 @@ internal static class JavSiteCatalog
         "javmix" => Plugin.EffectiveConfiguration.UseJavMix,
         "javquick" => Plugin.EffectiveConfiguration.UseJavQuick,
         "javtube" => Plugin.EffectiveConfiguration.UseJavTube,
+        "javguru" => Plugin.EffectiveConfiguration.UseJavGuru,
         "mgstage" => Plugin.EffectiveConfiguration.UseMgstage,
         _ => false
     };

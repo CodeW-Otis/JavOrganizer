@@ -26,6 +26,17 @@ internal static partial class FlareSolverrUrls
     internal const int DefaultPort = 8191;
 
     /// <summary>
+    /// Environment variable that supplies the FlareSolverr URL when the
+    /// plugin has no loaded configuration. It exists for the offline test
+    /// harnesses, which run the scrapers outside Jellyfin: without it every
+    /// Cloudflare-protected site there reports "blocked" no matter how the
+    /// server is actually configured, which makes the harness useless for
+    /// answering "does scraping work?". A real server always has
+    /// <see cref="Plugin.Instance"/> and never consults this.
+    /// </summary>
+    internal const string UrlOverrideVariable = "JAVORGANIZER_FLARESOLVERR_URL";
+
+    /// <summary>
     /// Gets the base API URL derived from the configuration, or
     /// <c>null</c> when no FlareSolverr is configured. A URL that already
     /// ends in <c>/v1</c> (the format the settings page suggests) is used
@@ -39,6 +50,17 @@ internal static partial class FlareSolverrUrls
             if (!string.IsNullOrWhiteSpace(configured))
             {
                 return NormalizeApiUrl(configured);
+            }
+
+            // No loaded configuration (test harness / design-time tool):
+            // honour the explicit override when one is present.
+            if (Plugin.Instance is null)
+            {
+                var fromEnvironment = Environment.GetEnvironmentVariable(UrlOverrideVariable)?.Trim();
+                if (!string.IsNullOrWhiteSpace(fromEnvironment))
+                {
+                    return NormalizeApiUrl(fromEnvironment);
+                }
             }
 
             // No URL configured: on Windows, a managed executable implies
