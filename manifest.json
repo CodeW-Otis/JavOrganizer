@@ -1,58 +1,60 @@
-{
-  "guid": "e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c",
-  "name": "JavOrganizer",
-  "overview": "JAV metadata and cover art from 19 websites, scraped in parallel",
-  "description": "Identifies JAV titles by product code in the file name and scrapes up to 19 websites simultaneously per code — JavLibrary, JavDB, JavBus, MissAV (+mirror), OneJAV, FANZA/DMM digital + DVD, JavLand, 123AV, SEXTB, SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube, jav.guru and MGStage — merging English titles, actresses and male actors, studio, genres, release date, runtime, cover art and scene backdrops. Advanced anti-ban system, Cloudflare bypass via optional FlareSolverr, automatic scanning, manual Scan page with live progress, gender browse collections ordered by total views, and gender-aware people collections.",
-  "owner": "JavOrganizer contributors",
-  "category": "Metadata",
-  "versions": [
-    {
-      "version": "1.5.1",
-      "changelog": "Two automation defects found by testing every background path end-to-end. The collections task re-downloaded every performer poster on every run: a guard that skipped the download when a collection already carried the right image was lost in the 1.4.0 rewrite, so each daily pass re-fetched all ~198 portraits from the remote CDNs - a run measured over five minutes instead of seconds. Downloads are now skipped when the item already holds the image that source would produce; repeat runs measured at 5.1 seconds with all 197 posters intact. A title with no English release was also re-scraped across every enabled site on every scan, forever: the language retry was unbounded and substantive records bypassed the freshness gate, so a Japanese-only title such as SDMF-010 cost a full multi-site scrape indefinitely for no possible gain. The retry is now capped at 3 attempts with the count carried across the cache rewrite. Verified live: startup auto-scan fires on every boot, FlareSolverr starts as a child of Jellyfin and reports healthy, all three scheduled tasks carry the expected triggers, all three manual buttons work with a working concurrency guard, and cache cleanup removed exactly one expired record, one expired marker and one orphan with no over-deletion.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.1/JavOrganizer-120-v1.5.1.0.zip",
-      "checksum": "ca91fa7ae3e92791c602004f746757a818333bed195972313fe101fc0339ca57",
-      "timestamp": "2026-09-15T00:00:00Z"
-    },
-    {
-      "version": "1.5.0",
-      "changelog": "New site: jav.guru (gender-labeled Actress/Actor cast plus English titles). Six defects found by an exhaustive live end-to-end test are fixed: zero-padded codes now match in result links, the search keyword and page verification (sites publish 'adn-029' for canonical 'ADN-29', so correct pages were downloaded then discarded); ban detection no longer fires on innocent JavaScript strings (jav.guru's comment widget says 'Too many requests', which had marked the site banned for six hours on every scrape); OneJAV and javquick result-link selectors now match their real markup (both previously returned nothing at all while looking healthy); a bare product code no longer outranks a real English title in the merge, and a page whose only title is the site's own name is rejected; bracketed codes with edition suffixes ('[ADN-029-MR]') are stripped from names while a different video's code in brackets is preserved. Test suite grown from 117 to 212 checks, plus a new live-network harness that reads the server's own FlareSolverr setting.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.0/JavOrganizer-120-v1.5.0.0.zip",
-      "checksum": "7be6dc1585696524179888dc3fd1e7ecb314567a83af562057b4f390c9dcac3a",
-      "timestamp": "2026-09-15T00:00:00Z"
-    },
-    {
-      "version": "1.4.0",
-      "changelog": "Actor and actress cards now actually show their photos. Cover fix: cast portraits are collected from every image a detail page embeds — title/alt labels, lazy-loaded data-src, CSS backgrounds, star ids shared with the credit link, and the performer's own name inside the portrait file name — then resolved back to the right person, including from records scraped before the feature existed; the person image provider caches its index instead of re-reading the whole cache per request, and any performer without a published portrait falls back to a cover from their own titles, so no card is ever blank. Nested collections rebuilt on a real Jellyfin hierarchy: Female Actresses and Male Actors now contain one card per performer (not loose videos), and each performer card opens that performer's videos — the 907 + 744 stray videos the old flat build left inside the gender cards are cleaned up automatically, along with performer collections that no longer meet the minimum. UI polish: site names are escaped before rendering, the FlareSolverr check no longer fires on page load, polling timers are torn down when leaving the page so they can no longer stack, and every button restores itself with a toast when a request fails instead of leaving the page stuck or a button dead. Build artifacts are no longer committed. Plus all earlier fixes.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.4.0/JavOrganizer-120-v1.4.0.0.zip",
-      "checksum": "9182d5c2bfdba076907adf2bd38cbab0c73cca761290871694bc43199f141d52",
-      "timestamp": "2026-09-15T00:00:00Z"
-    },
-    {
-      "version": "1.3.2",
-      "changelog": "Performer photos: actor and actress cards and their collections now show real photos (collected from the sites' cast portraits, served by a new person image provider). Adaptive human-like pacing engine, session-pinned browser profiles, per-page Referers, Retry-After backoff, staggered parallel fan-out, site health panel and FlareSolverr test button in settings, cross-platform FlareSolverr URL handling (Windows, Linux, macOS, Docker), kill-on-close job object keeps FlareSolverr tied to the server even on force-kill; plus all earlier fixes.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.2/JavOrganizer-120-v1.3.2.0.zip",
-      "checksum": "e668e63c5c828b239646f3a465cb5fe196c5e68b3961c2a26c0bce593a73f20b",
-      "timestamp": "2026-09-15T00:00:00Z"
-    },
-    {
-      "version": "1.3.1",
-      "changelog": "Main-menu Scan page (manual scan buttons one click from anywhere, with progress bar, elapsed time and ETA); gender browse collections — Female Actresses and Male Actors cards chaining every performer ordered by total views with release-date blocks; Japanese-title self-healing on scheduled scans; plus all 1.3.0 fixes: 18-site scraping with site cap, English-first merging, error pages never parsed, fixed Cloudflare detection, per-host Referer covers, advanced anti-ban, cancel-safe deep scan.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.1/JavOrganizer-120-v1.3.1.0.zip",
-      "checksum": "d20584d22ba8e51d63719ba638a1c0bff88a25a92e6a8ce23b0c85b7d5142eaf",
-      "timestamp": "2026-09-14T00:00:00Z"
-    },
-    {
-      "version": "1.3.0",
-      "changelog": "18-site scraping with per-code site cap and priority ranking; English-first merging; error pages never parse into records; fixed Cloudflare detection; per-host Referer image downloads; advanced anti-ban/anti-detect; automatic scraping (startup + 6-hourly task + self-healing); manual Scan/Deep/Cancel buttons; JavBus rewritten against real markup; 82-check test suite.",
-      "targetAbi": "12.0.0.0",
-      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.0/JavOrganizer-120-v1.3.0.0.zip",
-      "checksum": "d20584d22ba8e51d63719ba638a1c0bff88a25a92e6a8ce23b0c85b7d5142eaf",
-      "timestamp": "2026-09-13T00:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "guid": "e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c",
+    "name": "JavOrganizer",
+    "overview": "JAV metadata and cover art from 19 websites, scraped in parallel",
+    "description": "Identifies JAV titles by product code in the file name and scrapes up to 19 websites simultaneously per code — JavLibrary, JavDB, JavBus, MissAV (+mirror), OneJAV, FANZA/DMM digital + DVD, JavLand, 123AV, SEXTB, SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube, jav.guru and MGStage — merging English titles, actresses and male actors, studio, genres, release date, runtime, cover art and scene backdrops. Advanced anti-ban system, Cloudflare bypass via optional FlareSolverr, automatic scanning, manual Scan page with live progress, gender browse collections ordered by total views, and gender-aware people collections.",
+    "owner": "JavOrganizer contributors",
+    "category": "Metadata",
+    "versions": [
+      {
+        "version": "1.5.1",
+        "changelog": "Two automation defects found by testing every background path end-to-end. The collections task re-downloaded every performer poster on every run: a guard that skipped the download when a collection already carried the right image was lost in the 1.4.0 rewrite, so each daily pass re-fetched all ~198 portraits from the remote CDNs - a run measured over five minutes instead of seconds. Downloads are now skipped when the item already holds the image that source would produce; repeat runs measured at 5.1 seconds with all 197 posters intact. A title with no English release was also re-scraped across every enabled site on every scan, forever: the language retry was unbounded and substantive records bypassed the freshness gate, so a Japanese-only title such as SDMF-010 cost a full multi-site scrape indefinitely for no possible gain. The retry is now capped at 3 attempts with the count carried across the cache rewrite. Verified live: startup auto-scan fires on every boot, FlareSolverr starts as a child of Jellyfin and reports healthy, all three scheduled tasks carry the expected triggers, all three manual buttons work with a working concurrency guard, and cache cleanup removed exactly one expired record, one expired marker and one orphan with no over-deletion.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.1/JavOrganizer-120-v1.5.1.0.zip",
+        "checksum": "ca91fa7ae3e92791c602004f746757a818333bed195972313fe101fc0339ca57",
+        "timestamp": "2026-09-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.0",
+        "changelog": "New site: jav.guru (gender-labeled Actress/Actor cast plus English titles). Six defects found by an exhaustive live end-to-end test are fixed: zero-padded codes now match in result links, the search keyword and page verification (sites publish 'adn-029' for canonical 'ADN-29', so correct pages were downloaded then discarded); ban detection no longer fires on innocent JavaScript strings (jav.guru's comment widget says 'Too many requests', which had marked the site banned for six hours on every scrape); OneJAV and javquick result-link selectors now match their real markup (both previously returned nothing at all while looking healthy); a bare product code no longer outranks a real English title in the merge, and a page whose only title is the site's own name is rejected; bracketed codes with edition suffixes ('[ADN-029-MR]') are stripped from names while a different video's code in brackets is preserved. Test suite grown from 117 to 212 checks, plus a new live-network harness that reads the server's own FlareSolverr setting.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.0/JavOrganizer-120-v1.5.0.0.zip",
+        "checksum": "7be6dc1585696524179888dc3fd1e7ecb314567a83af562057b4f390c9dcac3a",
+        "timestamp": "2026-09-15T00:00:00Z"
+      },
+      {
+        "version": "1.4.0",
+        "changelog": "Actor and actress cards now actually show their photos. Cover fix: cast portraits are collected from every image a detail page embeds — title/alt labels, lazy-loaded data-src, CSS backgrounds, star ids shared with the credit link, and the performer's own name inside the portrait file name — then resolved back to the right person, including from records scraped before the feature existed; the person image provider caches its index instead of re-reading the whole cache per request, and any performer without a published portrait falls back to a cover from their own titles, so no card is ever blank. Nested collections rebuilt on a real Jellyfin hierarchy: Female Actresses and Male Actors now contain one card per performer (not loose videos), and each performer card opens that performer's videos — the 907 + 744 stray videos the old flat build left inside the gender cards are cleaned up automatically, along with performer collections that no longer meet the minimum. UI polish: site names are escaped before rendering, the FlareSolverr check no longer fires on page load, polling timers are torn down when leaving the page so they can no longer stack, and every button restores itself with a toast when a request fails instead of leaving the page stuck or a button dead. Build artifacts are no longer committed. Plus all earlier fixes.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.4.0/JavOrganizer-120-v1.4.0.0.zip",
+        "checksum": "9182d5c2bfdba076907adf2bd38cbab0c73cca761290871694bc43199f141d52",
+        "timestamp": "2026-09-15T00:00:00Z"
+      },
+      {
+        "version": "1.3.2",
+        "changelog": "Performer photos: actor and actress cards and their collections now show real photos (collected from the sites' cast portraits, served by a new person image provider). Adaptive human-like pacing engine, session-pinned browser profiles, per-page Referers, Retry-After backoff, staggered parallel fan-out, site health panel and FlareSolverr test button in settings, cross-platform FlareSolverr URL handling (Windows, Linux, macOS, Docker), kill-on-close job object keeps FlareSolverr tied to the server even on force-kill; plus all earlier fixes.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.2/JavOrganizer-120-v1.3.2.0.zip",
+        "checksum": "e668e63c5c828b239646f3a465cb5fe196c5e68b3961c2a26c0bce593a73f20b",
+        "timestamp": "2026-09-15T00:00:00Z"
+      },
+      {
+        "version": "1.3.1",
+        "changelog": "Main-menu Scan page (manual scan buttons one click from anywhere, with progress bar, elapsed time and ETA); gender browse collections — Female Actresses and Male Actors cards chaining every performer ordered by total views with release-date blocks; Japanese-title self-healing on scheduled scans; plus all 1.3.0 fixes: 18-site scraping with site cap, English-first merging, error pages never parsed, fixed Cloudflare detection, per-host Referer covers, advanced anti-ban, cancel-safe deep scan.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.1/JavOrganizer-120-v1.3.1.0.zip",
+        "checksum": "d20584d22ba8e51d63719ba638a1c0bff88a25a92e6a8ce23b0c85b7d5142eaf",
+        "timestamp": "2026-09-14T00:00:00Z"
+      },
+      {
+        "version": "1.3.0",
+        "changelog": "18-site scraping with per-code site cap and priority ranking; English-first merging; error pages never parse into records; fixed Cloudflare detection; per-host Referer image downloads; advanced anti-ban/anti-detect; automatic scraping (startup + 6-hourly task + self-healing); manual Scan/Deep/Cancel buttons; JavBus rewritten against real markup; 82-check test suite.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.0/JavOrganizer-120-v1.3.0.0.zip",
+        "checksum": "d20584d22ba8e51d63719ba638a1c0bff88a25a92e6a8ce23b0c85b7d5142eaf",
+        "timestamp": "2026-09-13T00:00:00Z"
+      }
+    ]
+  }
+]

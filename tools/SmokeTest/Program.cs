@@ -709,6 +709,79 @@ var legacyJson = """{"code":"ABC-123","title":"Legacy"}""";
 var legacy = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(legacyJson)!;
 Check(legacy.LanguageRetries == 0, "a record without the field defaults to zero");
 
+Console.WriteLine("== Repository manifest shape (regression: Jellyfin cannot read it) ==");
+// Jellyfin deserializes a plugin repository manifest into PackageInfo[] — an
+// ARRAY of plugins. This file was hand-written as a single JSON OBJECT, which
+// Jellyfin rejects with "The JSON value could not be converted to
+// MediaBrowser.Model.Updates.PackageInfo[]" on every server start, leaving
+// the plugin invisible in the catalog and impossible to install or update.
+// The shape is now pinned here so it cannot silently regress.
+var manifestPath = ManifestProbe.FindManifest();
+Check(manifestPath is not null, "manifest.json is reachable from the test run");
+
+if (manifestPath is not null)
+{
+    var manifestText = File.ReadAllText(manifestPath);
+    using var manifestDoc = System.Text.Json.JsonDocument.Parse(manifestText);
+    var root = manifestDoc.RootElement;
+
+    Check(root.ValueKind == System.Text.Json.JsonValueKind.Array,
+        $"manifest root is a JSON array (got {root.ValueKind})");
+
+    if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        Check(root.GetArrayLength() >= 1, "manifest lists at least one plugin");
+
+        var plugin = root[0];
+
+        // The exact key set Jellyfin's PackageInfo binds to.
+        foreach (var key in new[] { "guid", "name", "description", "overview", "owner", "category", "versions" })
+        {
+            Check(plugin.TryGetProperty(key, out _), $"manifest plugin has '{key}'");
+        }
+
+        Check(plugin.TryGetProperty("versions", out var versions)
+            && versions.ValueKind == System.Text.Json.JsonValueKind.Array
+            && versions.GetArrayLength() > 0,
+            "manifest plugin has a non-empty versions array");
+
+        if (versions.ValueKind == System.Text.Json.JsonValueKind.Array && versions.GetArrayLength() > 0)
+        {
+            var newest = versions[0];
+            foreach (var key in new[] { "version", "changelog", "targetAbi", "sourceUrl", "checksum", "timestamp" })
+            {
+                Check(newest.TryGetProperty(key, out _), $"newest version has '{key}'");
+            }
+
+            var checksum = newest.GetProperty("checksum").GetString() ?? string.Empty;
+            Check(checksum.Length == 64 && checksum.All(Uri.IsHexDigit),
+                $"newest checksum is a 64-char hex SHA256 (got '{checksum}')");
+
+            var sourceUrl = newest.GetProperty("sourceUrl").GetString() ?? string.Empty;
+            Check(sourceUrl.Contains("/releases/download/", StringComparison.Ordinal),
+                "newest sourceUrl points at a release asset");
+
+            // The advertised file name must contain the version it claims,
+            // otherwise the manifest points at a build that does not exist.
+            var version = newest.GetProperty("version").GetString() ?? string.Empty;
+            Check(sourceUrl.Contains($"v{version}", StringComparison.OrdinalIgnoreCase),
+                $"sourceUrl names version {version}");
+
+            // Versions must be ordered newest-first, which is what Jellyfin
+            // shows in the catalog.
+            var parsed = versions.EnumerateArray()
+                .Select(v => Version.TryParse(v.GetProperty("version").GetString(), out var p) ? p : null)
+                .ToList();
+            var ordered = parsed.Where(v => v is not null)
+                .Select(v => v!)
+                .ToList();
+            Check(ordered.Count == parsed.Count, "every version string is a valid version number");
+            Check(ordered.SequenceEqual(ordered.OrderByDescending(v => v)),
+                "versions are ordered newest first");
+        }
+    }
+}
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -789,5 +862,33 @@ internal static class PluginConfiguration_Probe
         }
 
         return new PluginConfiguration().UseJavGuru;
+    }
+}
+
+/// <summary>
+/// Locates the repository's manifest.json from the test binary's location, so
+/// the manifest-shape checks run against the real file rather than a copy.
+/// </summary>
+internal static class ManifestProbe
+{
+    /// <summary>
+    /// Walks up from the executing assembly until it finds manifest.json.
+    /// </summary>
+    /// <returns>The absolute path, or <c>null</c> when not found.</returns>
+    internal static string? FindManifest()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "manifest.json");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            dir = dir.Parent;
+        }
+
+        return null;
     }
 }
