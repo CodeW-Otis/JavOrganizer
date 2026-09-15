@@ -198,6 +198,10 @@ public sealed partial class GenericSiteScraper : SiteScraper
         video.Actresses = SelectNodeTexts(doc, selectors.Actresses);
         video.MaleActors = SelectNodeTexts(doc, selectors.MaleActors);
 
+        // Per-performer portraits (img title=name) feed the person image
+        // provider, so every performer card can carry a real photo.
+        CollectPersonImages(doc, video);
+
         var cover = string.IsNullOrWhiteSpace(selectors.Cover)
             ? SelectMetaContent(doc, "og:image")
             : FirstNonEmpty(

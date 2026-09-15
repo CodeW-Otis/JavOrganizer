@@ -14,12 +14,19 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// burst of parallel scrapes is smoothed into a polite per-site stream —
 /// the core of the anti-ban strategy.</para>
 /// <para>
-/// <b>Anti-detect jitter</b>: the enforced spacing is jittered randomly
-/// (between 60% and 140% of the configured interval) so the request pattern
-/// never looks machine-regular. Sites that fingerprint traffic by its
-/// clockwork regularity see an organic-looking stream instead. A shared
-/// <see cref="Random"/> is used under a lock because <see cref="Random"/>
-/// is not thread-safe.</para>
+/// <b>Human-like jitter</b>: the enforced spacing follows a human
+/// distribution — most gaps are short (65–125% of the base interval) and
+/// roughly one in eight is a longer "reading" pause (up to ~2.2×) — so the
+/// request pattern looks like a person browsing, never machine-regular.
+/// Sites that fingerprint traffic by its clockwork regularity see an
+/// organic-looking stream instead.</para>
+/// <para>
+/// <b>Adaptive pacing</b>: the spacing is additionally stretched by
+/// <see cref="AdaptiveThrottle.DelayMultiplier"/> (1× at rest up to ~4×
+/// under sustained pushback), so when any site starts rate-limiting, the
+/// engine-wide pacing eases off and then relaxes back automatically as
+/// pressure decays. A shared <see cref="Random"/> is used under a lock
+/// because <see cref="Random"/> is not thread-safe.</para>
 /// <para>
 /// The interval is supplied as a function and re-read on every acquisition,
 /// so changing the request delay in the configuration takes effect
@@ -82,7 +89,10 @@ internal sealed class PerSiteRateLimiter
 
     /// <summary>
     /// Produces the spacing for the next request: the configured interval
-    /// with random jitter, so the traffic pattern is not perfectly regular.
+    /// with human-like random jitter, stretched by the global adaptive
+    /// multiplier when sites have recently pushed back. The result is never
+    /// perfectly regular and never aggressive when the engine is under
+    /// pressure.
     /// </summary>
     /// <returns>The jittered spacing interval.</returns>
     private TimeSpan NextSpacing()
@@ -93,12 +103,21 @@ internal sealed class PerSiteRateLimiter
             return TimeSpan.Zero;
         }
 
+        double factor;
         lock (_jitter)
         {
-            // Between 60% and 140% of the base interval.
-            var factor = 0.6 + (_jitter.NextDouble() * 0.8);
-            return TimeSpan.FromMilliseconds(interval.TotalMilliseconds * factor);
+            // Human distribution: mostly quick, occasionally a longer
+            // "reading" pause — never clockwork-regular.
+            factor = _jitter.NextDouble() < 0.125
+                ? 1.5 + (_jitter.NextDouble() * 0.7)   // ~12.5% longer pause.
+                : 0.65 + (_jitter.NextDouble() * 0.6); // quick hop.
         }
+
+        var spacing = interval.TotalMilliseconds * factor;
+
+        // Global adaptive pacing: stretch when sites are pushing back.
+        spacing *= AdaptiveThrottle.DelayMultiplier;
+        return TimeSpan.FromMilliseconds(spacing);
     }
 
     private sealed class Releaser(SemaphoreSlim gate) : IDisposable

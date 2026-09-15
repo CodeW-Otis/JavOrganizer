@@ -351,9 +351,13 @@ public sealed class JavScanTrigger
     /// <summary>
     /// One worker of the parallel scan pool: pulls items off the shared
     /// queue and refreshes them until the queue is empty or cancelled,
-    /// updating the shared progress counters as it goes. In a deep pass each
-    /// item's cache is purged immediately before its refresh, so a
-    /// cancelled pass leaves everything not yet reached untouched.
+    /// updating the shared progress counters as it goes. Between items the
+    /// worker honors the global adaptive pressure: when sites have been
+    /// pushing back (429s, bans), the worker pauses briefly so the engine
+    /// as a whole eases off; when everything is healthy it moves at full
+    /// speed with no added delay. In a deep pass each item's cache is
+    /// purged immediately before its refresh, so a cancelled pass leaves
+    /// everything not yet reached untouched.
     /// </summary>
     /// <param name="queue">Shared queue of items awaiting refresh.</param>
     /// <param name="options">Refresh options shared by all workers.</param>
@@ -367,6 +371,10 @@ public sealed class JavScanTrigger
         {
             try
             {
+                // Ease off when the sites have recently pushed back; a no-op
+                // at full speed when everything is healthy.
+                await AdaptiveThrottle.MaybePauseAsync(ct).ConfigureAwait(false);
+
                 if (codesByItem is not null
                     && codesByItem.TryGetValue(item.Id, out var deepCode)
                     && deepCode.Length > 0)

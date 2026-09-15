@@ -183,6 +183,9 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Star portraits (img title=name) feed the person image provider.
+        CollectPersonImages(doc, video);
+
         video.CoverUrl = ToAbsoluteImageUrl(FirstNonEmptyNullable(
             SelectAttribute(doc, "//a[contains(@class,'bigImage')]//img", "src"),
             SelectAttribute(doc, "//a[contains(@class,'bigImage')]", "href")));

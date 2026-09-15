@@ -114,6 +114,95 @@ internal static class JavScraperFactory
         => Cache.GetOrAdd($"{key}:{Plugin.EffectiveConfiguration.Language}", _ => Build<T>(key));
 
     /// <summary>
+    /// A single site's current health as seen by the scraping engine:
+    /// whether it is enabled in the configuration, and whether the engine
+    /// is currently skipping it (temporary ban or repeated transport
+    /// failures) with the reason and when it will be retried.
+    /// </summary>
+    /// <param name="Key">Stable site key.</param>
+    /// <param name="Name">Display name.</param>
+    /// <param name="Enabled">Whether the site is enabled in the configuration.</param>
+    /// <param name="Priority">Scrape priority (lower = earlier).</param>
+    /// <param name="Available">Whether the site can be scraped right now.</param>
+    /// <param name="Reason">When unavailable: "banned" or "unreachable".</param>
+    /// <param name="RetryAt">When the site will be contacted again (UTC), when known.</param>
+    public sealed record SiteHealth(
+        string Key,
+        string Name,
+        bool Enabled,
+        int Priority,
+        bool Available,
+        string? Reason,
+        DateTime? RetryAt);
+
+    /// <summary>
+    /// Captures the health state of every known site — enabled ones plus
+    /// any cached scraper instances currently cooling off — for the
+    /// configuration page's live status panel. Cheap: no network work,
+    /// just in-memory state snapshots.
+    /// </summary>
+    /// <returns>Site health records, ordered by priority then name.</returns>
+    internal static List<SiteHealth> GetSiteHealth()
+    {
+        var config = Plugin.EffectiveConfiguration;
+
+        // Every known site: key, display name and scrape priority.
+        var known = new List<(string Key, string Name, int Priority)>
+        {
+            ("javlibrary", "JavLibrary", 10),
+            ("javdb", "JavDB", 20),
+            ("javbus", "JavBus", 30),
+            ("missav", "MissAV", 40),
+            ("missav-mirror", "MissAV mirror", 41)
+        };
+
+        foreach (var site in JavSiteCatalog.Sites)
+        {
+            known.Add((site.Key, site.DisplayName, site.Priority));
+        }
+
+        var result = new List<SiteHealth>(known.Count);
+        foreach (var (key, name, priority) in known)
+        {
+            var enabled = key switch
+            {
+                "javlibrary" => true, // The primary source is always on.
+                "javdb" => config.UseJavDb,
+                "javbus" => config.UseJavBus,
+                "missav" => config.UseMissAv,
+                "missav-mirror" => config.UseMissAvMirror,
+                _ => JavSiteCatalog.IsEnabled(key)
+            };
+
+            // A cached scraper instance carries the live engine state;
+            // without one (never scraped this session) the site is simply
+            // available whenever it is enabled.
+            string? reason = null;
+            DateTime? retryAt = null;
+            if (Cache.TryGetValue($"{key}:{config.Language}", out var cached))
+            {
+                var (why, when) = cached.SkipState;
+                reason = why;
+                retryAt = when;
+            }
+
+            result.Add(new SiteHealth(
+                key,
+                name,
+                enabled,
+                priority,
+                enabled && reason is null,
+                reason,
+                retryAt));
+        }
+
+        return result
+            .OrderBy(s => s.Priority)
+            .ThenBy(s => s.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
     /// Reads or creates a MissAV-template scraper bound to a specific
     /// domain (main site or mirror).
     /// </summary>

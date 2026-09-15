@@ -3,6 +3,10 @@ bin/
 obj/
 dist/
 
+# Release archives and their checksums (published as GitHub release assets)
+*.zip
+*.sha256
+
 # User-specific
 *.user
 *.suo
@@ -11,7 +15,12 @@ dist/
 .vscode/
 *.log
 
+# Local scratch / backups
+*.bak
+*.tmp
+*.orig
+*~
+
 # OS noise
 Thumbs.db
 .DS_Store
-

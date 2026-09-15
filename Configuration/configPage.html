@@ -22,6 +22,20 @@
                         <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
                         <div class="fieldDescription" id="ScanState">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
                     </div>
+                    <div class="paperList" style="padding: 0.8em 1em; margin-bottom: 1.5em;">
+                        <div style="font-weight: bold; margin-bottom: 0.4em;">Site status</div>
+                        <div class="fieldDescription" id="SiteStatusSummary" style="margin-bottom: 0.5em;">Loading site states…</div>
+                        <div id="SiteStatusList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.35em 1.2em; font-size: 0.92em;"></div>
+                        <div class="fieldDescription" style="margin-top: 0.5em;">Live view: <b>active</b> sites are scraped now; <b>banned</b> sites are in a 6-hour cool-off after the site complained; <b>unreachable</b> sites failed repeatedly and are skipped for 30–60 minutes. All recover automatically.</div>
+                    </div>
+                    <div class="paperList" style="padding: 0.8em 1em; margin-bottom: 1.5em;">
+                        <div style="font-weight: bold; margin-bottom: 0.4em;">FlareSolverr</div>
+                        <div id="FlareSolverrStatus" class="fieldDescription">Not tested yet.</div>
+                        <button is="emby-button" type="button" id="TestFlareSolverrButton" class="raised block emby-button" style="margin-top: 0.5em;">
+                            <span>Test FlareSolverr Connection</span>
+                        </button>
+                        <div class="fieldDescription" style="margin-top: 0.4em;">Checks the configured FlareSolverr (local managed instance or a remote/Docker one) by calling its health endpoint.</div>
+                    </div>
                     <div class="selectContainer">
                         <label class="selectLabel" for="Language">Language</label>
                         <select is="emby-select" id="Language" name="Language" class="emby-select-withcolor emby-select">
@@ -39,7 +53,7 @@
                     </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="FlaresolverrExecutablePath">FlareSolverr Executable Path</label>
-                        <input id="FlaresolverrExecutablePath" name="FlaresolverrExecutablePath" type="text" is="emby-input" placeholder="C:\Users\...\FlareSolverr\flaresolverr.exe" />
+                        <input id="FlaresolverrExecutablePath" name="FlaresolverrExecutablePath" type="text" is="emby-input" placeholder="&lt;path-to&gt;\flaresolverr.exe" />
                         <div class="fieldDescription">When set, the plugin starts this FlareSolverr together with the Jellyfin server and stops it when the server stops. Leave empty if you run FlareSolverr yourself.</div>
                     </div>
                     <div class="inputContainer">
@@ -237,6 +251,91 @@
             };
 
             var scanStateTimer = null;
+            var siteStateTimer = null;
+
+            function siteStatusText(reason, retryAt) {
+                if (reason === 'banned') {
+                    return 'banned — cooling off' + (retryAt ? ' until retry' : '');
+                }
+                if (reason === 'unreachable') {
+                    return 'unreachable — retrying later' + (retryAt ? ' until retry' : '');
+                }
+                return 'active';
+            }
+
+            // Site names come from the server; escape them before they reach
+            // innerHTML so a scraped site name can never inject markup.
+            function escapeHtml(value) {
+                return String(value === null || value === undefined ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function updateSiteStatus() {
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Sites/State') }).then(function (data) {
+                    var list = document.querySelector('#SiteStatusList');
+                    var summary = document.querySelector('#SiteStatusSummary');
+                    if (!list || !data || !data.sites) { return; }
+
+                    var active = 0, banned = 0, unreachable = 0, disabled = 0;
+                    var html = '';
+                    data.sites.forEach(function (s) {
+                        // Disabled sites are counted, but only the sites that
+                        // actually participate are listed — a wall of grey
+                        // "disabled" rows buries the ones that matter.
+                        if (!s.enabled) { disabled++; return; }
+                        if (s.reason === 'banned') { banned++; }
+                        else if (s.reason === 'unreachable') { unreachable++; }
+                        else { active++; }
+
+                        var color = s.reason ? '#e5a00d' : '#4caf50';
+                        html += '<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' +
+                            '<span style="color:' + color + ';">●</span> ' + escapeHtml(s.name) +
+                            ' <span style="color: ' + (s.reason ? '#e5a00d' : 'rgba(255,255,255,0.55)') + ';">— ' +
+                            escapeHtml(siteStatusText(s.reason, s.retryAt)) + '</span></div>';
+                    });
+
+                    list.innerHTML = html;
+                    var parts = [];
+                    if (active) { parts.push(active + ' active'); }
+                    if (banned) { parts.push(banned + ' banned'); }
+                    if (unreachable) { parts.push(unreachable + ' unreachable'); }
+                    if (disabled) { parts.push(disabled + ' disabled in settings'); }
+                    summary.textContent = parts.length ? parts.join(' · ') : 'No sites enabled.';
+                });
+            }
+
+            function testFlareSolverr() {
+                var btn = document.querySelector('#TestFlareSolverrButton');
+                var out = document.querySelector('#FlareSolverrStatus');
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Testing…';
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/FlareSolverr/Health') }).then(function (r) {
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
+                    if (!r.configured) {
+                        out.style.color = '#e5a00d';
+                        out.textContent = 'No FlareSolverr URL is configured. Sites behind Cloudflare will not be bypassed.';
+                    } else if (r.healthy) {
+                        out.style.color = '#4caf50';
+                        out.textContent = '✓ ' + r.message;
+                    } else {
+                        out.style.color = '#e5a00d';
+                        out.textContent = '✗ ' + r.message;
+                    }
+                }, function () {
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
+                    out.style.color = '#e5a00d';
+                    out.textContent = 'Could not reach the Jellyfin API for the test.';
+                });
+            }
+
+            document.querySelector('#TestFlareSolverrButton')
+                .addEventListener('click', testFlareSolverr);
 
             function setScanButtons(running) {
                 var scanBtn = document.querySelector('#ScanNowButton');
@@ -246,10 +345,12 @@
                     scanBtn.disabled = true;
                     deepBtn.disabled = true;
                     cancelBtn.style.display = '';
+                    cancelBtn.disabled = false;
                 } else {
                     scanBtn.disabled = false;
                     deepBtn.disabled = false;
                     cancelBtn.style.display = 'none';
+                    cancelBtn.disabled = false;
                     scanBtn.querySelector('span').textContent = 'Scan Library Now';
                     deepBtn.querySelector('span').textContent = 'Deep Re-scrape Everything';
                 }
@@ -285,10 +386,12 @@
 
                         var mode = state.deep ? 'Deep re-scrape' : 'Scan';
                         var dots = '.'.repeat(1 + (Math.floor(Date.now() / 600) % 3));
+                        var pacing = (state.pacingMultiplier && state.pacingMultiplier > 1.1)
+                            ? ' · pacing ' + state.pacingMultiplier + '× (easing off)' : '';
                         el.textContent = mode + ' running' + dots + ' ' +
                             done + ' / ' + total + ' videos (' + pct + '%) — ' +
                             (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
-                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '');
+                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '') + pacing;
                         el.style.color = '';
 
                         if (bar) {
@@ -329,18 +432,54 @@
 
             function triggerScan(url, button) {
                 var btn = button;
+                var original = btn.querySelector('span').textContent;
                 btn.disabled = true;
                 btn.querySelector('span').textContent = 'Starting…';
+
+                function restore() {
+                    // Restore this button explicitly: the scan may not have
+                    // started, so the other button's state must not be assumed.
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = original;
+                }
+
                 ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url) }).then(function (result) {
                     require(['toast'], function (toast) {
                         toast(result.message);
                     });
+                    restore();
                     updateScanState();
                 }, function () {
                     require(['toast'], function (toast) {
                         toast('Could not start the scan.');
                     });
-                    setScanButtons(false);
+                    restore();
+                    updateScanState();
+                });
+            }
+
+            function cancelScan(button) {
+                var btn = button;
+                var original = btn.querySelector('span').textContent;
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Cancelling…';
+
+                function restore() {
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = original;
+                }
+
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
+                    require(['toast'], function (toast) {
+                        toast(result.message);
+                    });
+                    restore();
+                    updateScanState();
+                }, function () {
+                    require(['toast'], function (toast) {
+                        toast('Could not cancel the scan.');
+                    });
+                    restore();
                 });
             }
 
@@ -351,18 +490,7 @@
                 .addEventListener('click', function () { triggerScan('JavOrganizer/Scan/Deep', this); });
 
             document.querySelector('#CancelScanButton')
-                .addEventListener('click', function () {
-                    var btn = this;
-                    btn.disabled = true;
-                    ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
-                        require(['toast'], function (toast) {
-                            toast(result.message);
-                        });
-                        updateScanState();
-                    }, function () {
-                        btn.disabled = false;
-                    });
-                });
+                .addEventListener('click', function () { cancelScan(this); });
 
             document.querySelector('#JavOrganizerConfigPage')
                 .addEventListener('pageshow', function () {
@@ -400,9 +528,51 @@
                         document.querySelector('#BuildYearCollections').checked = config.BuildYearCollections;
                         document.querySelector('#MinVideosPerCollection').value = config.MinVideosPerCollection || 2;
                         Dashboard.hideLoadingMsg();
+                    }, function () {
+                        // Never leave the page stuck behind the loading overlay
+                        // when the configuration cannot be read.
+                        Dashboard.hideLoadingMsg();
+                        var el = document.querySelector('#ScanState');
+                        if (el) {
+                            el.style.color = '#e5a00d';
+                            el.textContent = 'Could not read the plugin settings from the server. Reload the page to try again.';
+                        }
                     });
+
                     updateScanState();
+                    updateSiteStatus();
+
+                    // The FlareSolverr check is deliberately not run on load:
+                    // tests are what the button is for. The status line starts
+                    // neutral so an untested instance never looks broken.
+                    var fsOut = document.querySelector('#FlareSolverrStatus');
+                    if (fsOut) {
+                        fsOut.style.color = '';
+                        fsOut.textContent = 'Click the button below to check the configured FlareSolverr.';
+                    }
+
+                    // Timers are torn down on viewhide and re-armed here, so
+                    // navigating back and forth never stacks intervals.
+                    if (!siteStateTimer) {
+                        siteStateTimer = setInterval(function () {
+                            // Refresh site health only while the page is visible.
+                            if (document.querySelector('#JavOrganizerConfigPage') && !document.hidden) {
+                                updateSiteStatus();
+                            }
+                        }, 10000);
+                    }
                 });
+
+            document.querySelector('#JavOrganizerConfigPage')
+                .addEventListener('viewhide', function () {
+                    stopTimers();
+                });
+
+            // Clears every polling timer this page owns.
+            function stopTimers() {
+                if (scanStateTimer) { clearInterval(scanStateTimer); scanStateTimer = null; }
+                if (siteStateTimer) { clearInterval(siteStateTimer); siteStateTimer = null; }
+            }
 
             document.querySelector('#JavOrganizerConfigForm')
                 .addEventListener('submit', function (e) {
@@ -441,6 +611,18 @@
                         config.MinVideosPerCollection = parseInt(document.querySelector('#MinVideosPerCollection').value, 10) || 2;
                         ApiClient.updatePluginConfiguration(JavOrganizerConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
+                        }, function () {
+                            // A failed save must not leave the page stuck behind
+                            // the loading overlay with no explanation.
+                            Dashboard.hideLoadingMsg();
+                            require(['toast'], function (toast) {
+                                toast('Could not save the JavOrganizer settings.');
+                            });
+                        });
+                    }, function () {
+                        Dashboard.hideLoadingMsg();
+                        require(['toast'], function (toast) {
+                            toast('Could not read the JavOrganizer settings.');
                         });
                     });
 

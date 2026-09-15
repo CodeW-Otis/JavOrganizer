@@ -255,8 +255,9 @@ internal static class JavCache
     /// </summary>
     /// <param name="file">Absolute path of the cache file.</param>
     /// <param name="logger">Logger for diagnostics.</param>
+    /// <param name="ignoreAge">When set, an expired record is still returned.</param>
     /// <returns>The record, or <c>null</c> when missing or stale.</returns>
-    private static JavVideo? TryReadFileFresh(string file, ILogger logger)
+    private static JavVideo? TryReadFileFresh(string file, ILogger logger, bool ignoreAge = false)
     {
         try
         {
@@ -266,7 +267,7 @@ internal static class JavCache
             }
 
             var maxAge = MaxAge;
-            if (maxAge > TimeSpan.Zero && File.GetLastWriteTimeUtc(file) + maxAge < DateTime.UtcNow)
+            if (!ignoreAge && maxAge > TimeSpan.Zero && File.GetLastWriteTimeUtc(file) + maxAge < DateTime.UtcNow)
             {
                 return null;
             }
@@ -395,15 +396,111 @@ internal static class JavCache
     }
 
     /// <summary>
-    /// Reads the cached scrape record for a library item's product code
-    /// (extracted from the item's path). Used by the collections task to
-    /// look up per-video cast without knowing cache keys up front.
+    /// Builds a person-name → photo-URL index from every cached scrape
+    /// record, in one directory pass. Used by the person image provider to
+    /// serve performer photos for people whose items Jellyfin has no image
+    /// for, and by the collections task to poster the person collections.
     /// </summary>
-    /// <param name="itemPath">The library item's file path or name.</param>
+    /// <param name="logger">Logger for diagnostics.</param>
+    /// <returns>Person name to photo URL mapping; names without a known
+    /// photo are absent.</returns>
+    internal static Dictionary<string, string> LoadPersonImageIndex(ILogger logger)
+    {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            if (!Directory.Exists(CacheDir))
+            {
+                return index;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(CacheDir, "*.json"))
+            {
+                try
+                {
+                    using var stream = File.OpenRead(file);
+                    var record = JsonSerializer.Deserialize<JavVideo>(stream, ReadOptions);
+                    if (record is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var (name, url) in record.PersonImageUrls)
+                    {
+                        if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            index.TryAdd(name, url);
+                        }
+                    }
+
+                    // Records written before performer photos existed carry
+                    // no photo map of their own, but they do name their cast
+                    // — and the portraits the page embedded were kept. Replay
+                    // the match for every performer so those records give up
+                    // their photos too.
+                    foreach (var name in record.Actresses.Concat(record.MaleActors))
+                    {
+                        if (index.ContainsKey(name))
+                        {
+                            continue;
+                        }
+
+                        var url = SiteScraper.PersonImageFor(record, name);
+                        if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            index[name] = url!;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "Skipping unreadable cache file '{File}' while building the person image index", file);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed building the person image index");
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// Reads the cached scrape record for a library item, used by the
+    /// collections task to look up a video's cast and covers without
+    /// knowing the cache key up front.
+    /// </summary>
+    /// <param name="itemPath">The library item's file path.</param>
     /// <param name="itemName">Fallback name when the path has no code.</param>
     /// <param name="logger">Logger for diagnostics.</param>
     /// <returns>The record, or <c>null</c> when the item has no cached scrape.</returns>
     internal static JavVideo? TryReadForItem(string? itemPath, string? itemName, ILogger logger)
+        => ReadForItem(itemPath, itemName, logger, ignoreAge: false);
+
+    /// <summary>
+    /// Reads the cached scrape record for a library item regardless of the
+    /// cache TTL, used as a last-resort source of performer photos. A
+    /// record that is too old to serve as metadata still names the cast and
+    /// carries their portrait URLs, which is all the collections task needs
+    /// to give an actor or actress card a face.
+    /// </summary>
+    /// <param name="itemPath">The library item's file path.</param>
+    /// <param name="itemName">Fallback name when the path has no code.</param>
+    /// <param name="logger">Logger for diagnostics.</param>
+    /// <returns>The stale record, or <c>null</c> when none exists.</returns>
+    internal static JavVideo? TryReadStaleForItem(string? itemPath, string? itemName, ILogger logger)
+        => ReadForItem(itemPath, itemName, logger, ignoreAge: true);
+
+    /// <summary>
+    /// Resolves a cached record for an item by its product code.
+    /// </summary>
+    /// <param name="itemPath">The library item's file path.</param>
+    /// <param name="itemName">Fallback name when the path has no code.</param>
+    /// <param name="logger">Logger for diagnostics.</param>
+    /// <param name="ignoreAge">When set, an expired record is still returned.</param>
+    /// <returns>The record, or <c>null</c>.</returns>
+    private static JavVideo? ReadForItem(string? itemPath, string? itemName, ILogger logger, bool ignoreAge)
     {
         var code = JavCodeParser.ExtractCode(itemPath) ?? JavCodeParser.ExtractCode(itemName);
         if (code is null)
@@ -412,7 +509,12 @@ internal static class JavCache
         }
 
         var normalized = JavCodeParser.Normalize(code);
-        return normalized.Length == 0 ? null : TryRead(normalized, logger);
+        if (normalized.Length == 0)
+        {
+            return null;
+        }
+
+        return ignoreAge ? TryReadFileFresh(CacheFile(normalized), logger, ignoreAge: true) : TryRead(normalized, logger);
     }
 
     /// <summary>

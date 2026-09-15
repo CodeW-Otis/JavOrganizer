@@ -181,6 +181,9 @@ public sealed partial class JavLibraryScraper : SiteScraper
         // override them with separated lists.
         video.Actresses = SelectTexts(doc, "//div[@id='video_cast']//a");
 
+        // Cast portraits (img title=name) feed the person image provider.
+        CollectPersonImages(doc, video);
+
         // Scene screenshots offered as backdrops; the anchor hrefs point to
         // the full-resolution versions while the img srcs are thumbnails.
         video.PreviewUrls = SelectAttributes(doc, "//div[contains(@class,'previewthumbs')]//a", "href")

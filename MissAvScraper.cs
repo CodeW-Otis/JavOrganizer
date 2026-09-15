@@ -101,6 +101,9 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
         video.Actresses = SelectTexts(doc, "//span[text()='Actress:']/following-sibling::a[1]");
         video.MaleActors = SelectTexts(doc, "//span[text()='Actor:']/following-sibling::a[1]");
 
+        // Cast portraits (img title=name) feed the person image provider.
+        CollectPersonImages(doc, video);
+
         video.Genres = SelectTexts(doc, "//span[text()='Genre:']/following-sibling::a");
 
         video.CoverUrl = ToAbsoluteImageUrl(SelectAttribute(doc, "//img[contains(@src,'/okcdn') or contains(@class,'object-cover')]", "src"));

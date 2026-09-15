@@ -173,6 +173,9 @@ public sealed partial class JavDbScraper : SiteScraper
                 .ToList() ?? [];
         }
 
+        // Cast portraits (img title=name) feed the person image provider.
+        CollectPersonImages(doc, video);
+
         // Sample/preview images offered as backdrops; JavDB puts them behind
         // "sample" thumbnails that link to full-size images.
         video.PreviewUrls = SelectAttributes(doc, "//a[@class='tile-menu-item' or contains(@href,'sample')][@href]", "href")

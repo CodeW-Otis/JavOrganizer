@@ -34,23 +34,23 @@ In Jellyfin: go to **Dashboard → Plugins → Repositories → ➕**, paste the
 
 | Your Jellyfin | Download |
 |---|---|
-| 12.0.x | `JavOrganizer-120-v1.3.0.0.zip` |
-| 10.11.x | `JavOrganizer-1011-v1.3.0.0.zip` |
-| 10.10.x | `JavOrganizer-1010-v1.3.0.0.zip` |
-| 10.9.x | `JavOrganizer-109-v1.3.0.0.zip` |
-| 10.8.x | `JavOrganizer-108-v1.3.0.0.zip` |
+| 12.0.x | `JavOrganizer-120-v1.4.0.0.zip` |
+| 10.11.x | `JavOrganizer-1011-v1.4.0.0.zip` |
+| 10.10.x | `JavOrganizer-1010-v1.4.0.0.zip` |
+| 10.9.x | `JavOrganizer-109-v1.4.0.0.zip` |
+| 10.8.x | `JavOrganizer-108-v1.4.0.0.zip` |
 
 Grab the correct zip from the [Releases](../../releases/latest) page, then:
 
 1. Extract the zip **contents** directly into `{Jellyfin data}/plugins/JavOrganizer/`
    (Windows: `%LocalAppData%\Jellyfin\plugins\JavOrganizer\` — Linux: `/var/lib/jellyfin/plugins/JavOrganizer/`).
 2. Restart Jellyfin.
-3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.3.0* is listed.
+3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.4.0* is listed.
 
 > [!CAUTION]
 > **Critical Step:** Make sure you extract the zip contents *into* the `JavOrganizer` folder, not a subfolder inside it.
 
-✅ **Success check:** JavOrganizer 1.3.0 should now show up in **Dashboard → Plugins**.
+✅ **Success check:** JavOrganizer 1.4.0 should now show up in **Dashboard → Plugins**.
 
 ---
 
@@ -117,6 +117,25 @@ After this:
 - Actor collections and rankings update daily via the Scheduled Task **Update JavOrganizer Collections**.
 
 ✅ **Success check:** Covers, titles, metadata, and actors will start populating in your Jellyfin library.
+
+### Where to find everyone
+
+After the collections task has run once, your library gets two browse cards
+that nest properly:
+
+```
+Female Actresses (JavOrganizer)   ← every actress, most-watched first
+└── Actress: <name>               ← her card shows her photo
+    └── her videos, newest first
+
+Male Actors (JavOrganizer)
+└── Actor: <name>
+    └── his videos, newest first
+```
+
+Open a card to see the performer cards; open a performer to see their videos.
+Each performer card uses the performer's photo, or a cover from one of their
+own titles when no site published a portrait.
 
 ---
 

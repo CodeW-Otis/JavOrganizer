@@ -46,6 +46,7 @@
                     scanBtn.disabled = true;
                     deepBtn.disabled = true;
                     cancelBtn.style.display = '';
+                    cancelBtn.disabled = false;
                 } else {
                     scanBtn.disabled = false;
                     deepBtn.disabled = false;
@@ -84,10 +85,12 @@
 
                         var mode = state.deep ? 'Deep re-scrape' : 'Scan';
                         var dots = new Array(1 + (Math.floor(Date.now() / 600) % 3)).join('.') + '.';
+                        var pacing = (state.pacingMultiplier && state.pacingMultiplier > 1.1)
+                            ? ' · pacing ' + state.pacingMultiplier + '× (easing off)' : '';
                         el.textContent = mode + ' running' + dots + ' ' +
                             done + ' / ' + total + ' videos (' + pct + '%) — ' +
                             (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
-                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '');
+                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '') + pacing;
                         el.style.color = '';
 
                         if (bar) {
@@ -127,18 +130,54 @@
 
             function triggerScan(url, button) {
                 var btn = button;
+                var original = btn.querySelector('span').textContent;
                 btn.disabled = true;
                 btn.querySelector('span').textContent = 'Starting…';
+
+                function restore() {
+                    // Restore this button explicitly: the scan may not have
+                    // started, so the other button's state must not be assumed.
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = original;
+                }
+
                 ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url) }).then(function (result) {
                     require(['toast'], function (toast) {
                         toast(result.message);
                     });
+                    restore();
                     updateScanState();
                 }, function () {
                     require(['toast'], function (toast) {
                         toast('Could not start the scan.');
                     });
-                    setScanButtons(false);
+                    restore();
+                    updateScanState();
+                });
+            }
+
+            function cancelScan(button) {
+                var btn = button;
+                var original = btn.querySelector('span').textContent;
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Cancelling…';
+
+                function restore() {
+                    btn.disabled = false;
+                    btn.querySelector('span').textContent = original;
+                }
+
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
+                    require(['toast'], function (toast) {
+                        toast(result.message);
+                    });
+                    restore();
+                    updateScanState();
+                }, function () {
+                    require(['toast'], function (toast) {
+                        toast('Could not cancel the scan.');
+                    });
+                    restore();
                 });
             }
 
@@ -162,18 +201,7 @@
                 .addEventListener('click', function () { triggerScan('JavOrganizer/Scan/Deep', this); });
 
             document.querySelector('#CancelScanButton')
-                .addEventListener('click', function () {
-                    var btn = this;
-                    btn.disabled = true;
-                    ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel') }).then(function (result) {
-                        require(['toast'], function (toast) {
-                            toast(result.message);
-                        });
-                        updateScanState();
-                    }, function () {
-                        btn.disabled = false;
-                    });
-                });
+                .addEventListener('click', function () { cancelScan(this); });
         </script>
     </div>
 </body>

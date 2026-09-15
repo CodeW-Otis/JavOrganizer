@@ -7,6 +7,22 @@
   "category": "Metadata",
   "versions": [
     {
+      "version": "1.4.0",
+      "changelog": "Actor and actress cards now actually show their photos. Cover fix: cast portraits are collected from every image a detail page embeds — title/alt labels, lazy-loaded data-src, CSS backgrounds, star ids shared with the credit link, and the performer's own name inside the portrait file name — then resolved back to the right person, including from records scraped before the feature existed; the person image provider caches its index instead of re-reading the whole cache per request, and any performer without a published portrait falls back to a cover from their own titles, so no card is ever blank. Nested collections rebuilt on a real Jellyfin hierarchy: Female Actresses and Male Actors now contain one card per performer (not loose videos), and each performer card opens that performer's videos — the 907 + 744 stray videos the old flat build left inside the gender cards are cleaned up automatically, along with performer collections that no longer meet the minimum. UI polish: site names are escaped before rendering, the FlareSolverr check no longer fires on page load, polling timers are torn down when leaving the page so they can no longer stack, and every button restores itself with a toast when a request fails instead of leaving the page stuck or a button dead. Build artifacts are no longer committed. Plus all earlier fixes.",
+      "targetAbi": "12.0.0.0",
+      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.4.0/JavOrganizer-120-v1.4.0.0.zip",
+      "checksum": "9182d5c2bfdba076907adf2bd38cbab0c73cca761290871694bc43199f141d52",
+      "timestamp": "2026-09-15T00:00:00Z"
+    },
+    {
+      "version": "1.3.2",
+      "changelog": "Performer photos: actor and actress cards and their collections now show real photos (collected from the sites' cast portraits, served by a new person image provider). Adaptive human-like pacing engine, session-pinned browser profiles, per-page Referers, Retry-After backoff, staggered parallel fan-out, site health panel and FlareSolverr test button in settings, cross-platform FlareSolverr URL handling (Windows, Linux, macOS, Docker), kill-on-close job object keeps FlareSolverr tied to the server even on force-kill; plus all earlier fixes.",
+      "targetAbi": "12.0.0.0",
+      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.3.2/JavOrganizer-120-v1.3.2.0.zip",
+      "checksum": "e668e63c5c828b239646f3a465cb5fe196c5e68b3961c2a26c0bce593a73f20b",
+      "timestamp": "2026-09-15T00:00:00Z"
+    },
+    {
       "version": "1.3.1",
       "changelog": "Main-menu Scan page (manual scan buttons one click from anywhere, with progress bar, elapsed time and ETA); gender browse collections — Female Actresses and Male Actors cards chaining every performer ordered by total views with release-date blocks; Japanese-title self-healing on scheduled scans; plus all 1.3.0 fixes: 18-site scraping with site cap, English-first merging, error pages never parsed, fixed Cloudflare detection, per-host Referer covers, advanced anti-ban, cancel-safe deep scan.",
       "targetAbi": "12.0.0.0",

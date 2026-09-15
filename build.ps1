@@ -39,7 +39,7 @@ $dist = Join-Path $root 'dist'
 
 $pluginGuid = 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
 $pluginName = 'JavOrganizer'
-$pluginVersion = '1.3.1.0'
+$pluginVersion = '1.4.0.0'
 
 # ABI version each Jellyfin line expects in the meta file.
 $abiMap = @{

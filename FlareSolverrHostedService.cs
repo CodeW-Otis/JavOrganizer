@@ -22,6 +22,7 @@ public sealed class FlareSolverrHostedService : IHostedService
     private readonly ILogger<FlareSolverrHostedService> _logger;
     private readonly IServerApplicationHost _appHost;
     private Process? _process;
+    private WindowsKillOnCloseJob? _job;
     private CancellationTokenSource? _healthPollCancel;
 
     /// <summary>
@@ -59,6 +60,10 @@ public sealed class FlareSolverrHostedService : IHostedService
                 _logger.LogWarning("Configured FlareSolverr executable not found: {Path}", exe);
             }
 
+            // Nothing to manage here (Docker and non-Windows users point at
+            // an external FlareSolverr URL instead); still probe the health
+            // endpoint so the log states clearly whether it answers.
+            await ProbeConfiguredHealthAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -84,6 +89,26 @@ public sealed class FlareSolverrHostedService : IHostedService
                 return;
             }
 
+            // Bind the child to a kill-on-close job object so the OS kills
+            // it even when this server is force-killed (StopAsync never
+            // runs in that case). Software kill + job object together
+            // cover graceful and abrupt termination.
+            try
+            {
+                _job = WindowsKillOnCloseJob.TryCreate(_process);
+                if (_job is null)
+                {
+                    _logger.LogDebug("FlareSolverr is not in a job object (non-Windows); relying on software kill only");
+                }
+            }
+            catch (Exception ex)
+            {
+                // The child is already running; fall back to software-only
+                // lifecycle management rather than aborting.
+                _job = null;
+                _logger.LogWarning(ex, "Failed to bind FlareSolverr to a kill-on-close job object; abrupt server termination may leave it running");
+            }
+
             _logger.LogInformation("FlareSolverr started (pid {Pid}) alongside the server", _process.Id);
 
             // Wait for the HTTP endpoint to answer before scans begin.
@@ -97,6 +122,45 @@ public sealed class FlareSolverrHostedService : IHostedService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to launch FlareSolverr");
+        }
+    }
+
+    /// <summary>
+    /// One-shot probe of the configured FlareSolverr health endpoint,
+    /// used when the plugin manages no process itself (Docker and other
+    /// external deployments). Logs the outcome so operators can see at a
+    /// glance whether their external FlareSolverr answers.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    private async Task ProbeConfiguredHealthAsync(CancellationToken ct)
+    {
+        var healthUrl = FlareSolverrUrls.HealthUrl;
+        if (healthUrl is null)
+        {
+            _logger.LogInformation("FlareSolverr is not configured; Cloudflare-protected sites will only work without challenge");
+            return;
+        }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var response = await http.GetAsync(healthUrl, ct).ConfigureAwait(false);
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("External FlareSolverr at {Url} is healthy and ready to bypass Cloudflare", FlareSolverrUrls.ApiUrl);
+            }
+            else if (response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.MethodNotAllowed)
+            {
+                _logger.LogInformation("External FlareSolverr at {Url} is reachable (no /health route on this build; the solver works)", FlareSolverrUrls.ApiUrl);
+            }
+            else
+            {
+                _logger.LogWarning("External FlareSolverr at {Url} answered {Status} on the health endpoint", FlareSolverrUrls.ApiUrl, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("External FlareSolverr at {Url} did not answer the health endpoint: {Message}", FlareSolverrUrls.ApiUrl, ex.Message);
         }
     }
 
@@ -122,6 +186,13 @@ public sealed class FlareSolverrHostedService : IHostedService
 
         _process?.Dispose();
         _process = null;
+
+        // Belt-and-braces: closing the job handle makes the OS kill
+        // anything that survived the software kill above (and is what
+        // takes care of a force-killed server, where StopAsync never
+        // runs).
+        _job?.Dispose();
+        _job = null;
         return Task.CompletedTask;
     }
 
@@ -146,13 +217,23 @@ public sealed class FlareSolverrHostedService : IHostedService
     }
 
     /// <summary>
-    /// Polls the FlareSolverr health endpoint until it answers or the token
-    /// is cancelled. Gives up after roughly 60 seconds.
+    /// Polls the FlareSolverr health endpoint (derived from the configured
+    /// URL — works for the plugin-managed local instance on Windows and
+    /// for a remote/Docker FlareSolverr alike) until it answers or the
+    /// token is cancelled. Gives up after roughly 60 seconds.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns><c>true</c> when the endpoint answered; <c>false</c> on timeout.</returns>
     private static async Task<bool> WaitForHealthyAsync(CancellationToken ct)
     {
+        var healthUrl = FlareSolverrUrls.HealthUrl;
+        if (healthUrl is null)
+        {
+            // No FlareSolverr configured at all; nothing to wait for. The
+            // plugin simply runs without Cloudflare fallback.
+            return false;
+        }
+
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
         var deadline = DateTime.UtcNow.AddSeconds(60);
 
@@ -160,9 +241,13 @@ public sealed class FlareSolverrHostedService : IHostedService
         {
             try
             {
-                using var response = await http.GetAsync("http://localhost:8191/health", ct).ConfigureAwait(false);
-                if (response.IsSuccessStatusCode)
+                using var response = await http.GetAsync(healthUrl, ct).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode
+                    || response.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.MethodNotAllowed)
                 {
+                    // Any HTTP answer proves the process is up. 404/405
+                    // just mean this FlareSolverr build has no /health
+                    // route — the solver itself still works.
                     return true;
                 }
             }

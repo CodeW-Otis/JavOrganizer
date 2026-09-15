@@ -34,6 +34,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         services.AddSingleton<JavMetadataProvider>();
         services.AddSingleton<JavImageProvider>();
+        services.AddSingleton<JavPersonImageProvider>();
 
         // Manual + startup + scheduled scan trigger, shared by the
         // controller, the auto-scan hosted service and the periodic task.

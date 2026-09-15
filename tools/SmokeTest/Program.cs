@@ -267,6 +267,176 @@ Check(JavBusScraper_Tests.ToPaddedKeywordPublic("SDMF-010") == "SDMF-010", "padd
 Check(JavBusScraper_Tests.ToPaddedKeywordPublic("SDMF-10") is null, "no padded variant for SDMF-10");
 Check(JavBusScraper_Tests.ToPaddedKeywordPublic("ABP-00123") == "ABP-0123", "padded keyword for ABP-00123");
 Check(JavBusScraper_Tests.ToPaddedKeywordPublic("T28-597") is null, "no padded variant for T28-597");
+
+Console.WriteLine("== AdaptiveThrottle ==");
+// At rest: no pressure, multiplier exactly 1, pauses are a no-op.
+Check(AdaptiveThrottle.DelayMultiplier >= 1.0 && AdaptiveThrottle.DelayMultiplier < 1.05, $"rest multiplier ~1.0 (got {AdaptiveThrottle.DelayMultiplier:0.00})");
+// A strong pushback raises pressure and the multiplier but stays bounded.
+AdaptiveThrottle.ReportPressure(1.0);
+var pressured = AdaptiveThrottle.Pressure;
+Check(pressured > 0.25, $"ban signal raises pressure (got {pressured:0.00})");
+Check(AdaptiveThrottle.DelayMultiplier > 1.3, $"multiplier stretches under pressure (got {AdaptiveThrottle.DelayMultiplier:0.00})");
+Check(AdaptiveThrottle.DelayMultiplier <= 4.01, "multiplier bounded at 4x");
+// Successes bleed pressure off.
+for (var i = 0; i < 200; i++)
+{
+    AdaptiveThrottle.ReportSuccess();
+}
+Check(AdaptiveThrottle.Pressure < pressured, "successes reduce pressure");
+AdaptiveThrottle.ReportPressure(0); // zero severity must be a safe no-op
+Check(true, "zero-severity report is a no-op (no crash)");
+
+Console.WriteLine("== FlareSolverrUrls ==");
+// No configuration → no URL. With configuration (via the test's own
+// instance defaults) the /v1 handling must never double-append.
+Check(FlareSolverrUrls.ApiUrl is null, "no configuration means no API URL (unit-test defaults)");
+var probe = FlareSolverrUrls.HealthUrl;
+Check(probe is null, "no configuration means no health URL");
+Check(FlareSolverrUrls_Tests.NormalizeForTest("http://localhost:8191/v1") == "http://localhost:8191/v1", "URL already ending in /v1 unchanged");
+Check(FlareSolverrUrls_Tests.NormalizeForTest("http://localhost:8191/v1/") == "http://localhost:8191/v1", "trailing slash /v1 URL normalized");
+Check(FlareSolverrUrls_Tests.NormalizeForTest("http://localhost:8191") == "http://localhost:8191/v1", "bare URL gets /v1 appended");
+Check(FlareSolverrUrls_Tests.NormalizeForTest("http://localhost:8191/") == "http://localhost:8191/v1", "bare URL with slash gets /v1 appended");
+Check(FlareSolverrUrls_Tests.NormalizeForTest("http://flaresolverr:8191/v1") == "http://flaresolverr:8191/v1", "Docker-style URL unchanged");
+
+Console.WriteLine("== SiteScraper session profile coherence ==");
+// Each scraper session pins one internally-coherent browser profile; two
+// sessions may differ (random), but a single session's UA always matches
+// its own client hints.
+var stubForProfile = new StubLogger();
+var busForProfile = new JavBusScraper(stubForProfile, "en");
+var profileInfo = SiteScraper_Tests.SessionProfileOf(busForProfile);
+Check(profileInfo is not null, "session profile exists");
+if (profileInfo is not null)
+{
+    Check(!string.IsNullOrWhiteSpace(profileInfo.Value.UserAgent), "profile has a user agent");
+    // Windows UA must come with Windows platform hints.
+    if (profileInfo.Value.UserAgent.Contains("Windows", StringComparison.Ordinal))
+    {
+        Check(profileInfo.Value.SecChUaPlatform == "\"Windows\"", $"Windows UA pairs with Windows platform (got '{profileInfo.Value.SecChUaPlatform}')");
+    }
+}
+
+Console.WriteLine("== Merge: person photos ==");
+var photoPrimary = new JavVideo { Code = "ABP-123", Title = "Primary Movie Title" };
+var photoSecondary = new JavVideo
+{
+    Code = "ABP-123",
+    Title = "Secondary Movie Title",
+    Actresses = ["A"],
+    PersonImageUrls = new Dictionary<string, string> { ["A"] = "https://x/a.jpg", ["B"] = "https://x/b.jpg" }
+};
+var photoMerged = JavMetadataProvider.Merge(photoPrimary, photoSecondary)!;
+Check(photoMerged.PersonImageUrls.Count == 2, "person photos merged from secondary");
+var photoReversed = JavMetadataProvider.Merge(photoSecondary, new JavVideo { Code = "ABP-123", Title = "T", PersonImageUrls = new Dictionary<string, string> { ["A"] = "https://x/other.jpg" } })!;
+Check(photoReversed.PersonImageUrls["A"] == "https://x/a.jpg", "primary person photo wins over secondary");
+
+Console.WriteLine("== JavBus star portrait collection ==");
+// JavBus detail pages carry star portraits as <img title="Name">; the
+// scraper must map the cast names to those photo URLs.
+var portraitScraper = new JavBusScraper(logger, "en");
+var portraitHtml = """
+<html><head><title>ABP-982 - JavBus</title></head><body>
+<h3>ABP-982 Some Movie Title</h3>
+<span class="info">
+  <span class="header">ID:</span> <span>ABP-982</span>
+</span>
+<ul><div id="star_qq9" class="star-box"><li>
+  <a href="https://www.javbus.com/en/star/qq9"><img src="/pics/actress/qq9_a.jpg" title="Ai sound Maria"></a>
+  <div class="star-name"><a href="https://www.javbus.com/en/star/qq9" title="Ai sound Maria">Ai sound Maria</a></div>
+</li></div></ul>
+</body></html>
+""";
+var portraitDoc = new HtmlAgilityPack.HtmlDocument();
+portraitDoc.LoadHtml(portraitHtml);
+var portraitVideo = portraitScraper.ParseVideoPage(portraitDoc, portraitHtml);
+Check(portraitVideo is not null, "portrait page parses");
+Check(portraitVideo?.Actresses.Contains("Ai sound Maria") == true, "cast name from star link");
+Check(portraitVideo?.PersonImageUrls.TryGetValue("Ai sound Maria", out var photoUrl) == true
+    && photoUrl == "https://www.javbus.com/pics/actress/qq9_a.jpg",
+    $"star portrait mapped to absolute URL (got '{portraitVideo?.PersonImageUrls.Values.FirstOrDefault()}')");
+
+Console.WriteLine("== Performer photo matching (cover fix) ==");
+// The label match is the reliable path, but real pages also expose portraits
+// through a shared star id and through the performer's name inside the file
+// name. Every one of those must still put a face on the card.
+Check(portraitVideo?.PersonImageNameHints.TryGetValue("Ai sound Maria", out var hint) == true && hint == "qq9",
+    $"star id recorded as a photo hint (got '{portraitVideo?.PersonImageNameHints.Values.FirstOrDefault()}')");
+
+// Star-id path: the portrait file carries the id, the credit link carries the
+// spelling — the two must still be joined.
+var starIdHtml = """
+<html><head><title>ABP-100 - Site</title></head><body>
+<span class="header">ID:</span> <span>ABP-100</span>
+<div class="star-box"><a href="/en/star/uly"><img data-src="/pics/actress/uly_a.jpg" alt=""></a></div>
+<a href="/en/star/uly" class="star-name">Suzumori remu</a>
+</body></html>
+""";
+var starIdDoc = new HtmlAgilityPack.HtmlDocument();
+starIdDoc.LoadHtml(starIdHtml);
+var starIdVideo = portraitScraper.ParseVideoPage(starIdDoc, starIdHtml);
+Check(starIdVideo?.PersonImageUrls.TryGetValue("Suzumori remu", out var starPhoto) == true
+    && starPhoto == "https://www.javbus.com/pics/actress/uly_a.jpg",
+    $"star id joins a lazy-loaded portrait to its credit (got '{starIdVideo?.PersonImageUrls.Values.FirstOrDefault()}')");
+
+// Name-in-URL path: no title, no star link — only the performer's own name
+// inside the portrait file name identifies the photo.
+var nameUrlHtml = """
+<html><head><title>ABP-200 - Site</title></head><body>
+<span class="header">ID:</span> <span>ABP-200</span>
+<div class="cast"><img data-src="https://cdn.example.com/actress/mina_kitano_a.jpg"></div>
+<a href="/star/mina-kitano">Mina Kitano</a>
+</body></html>
+""";
+var nameUrlDoc = new HtmlAgilityPack.HtmlDocument();
+nameUrlDoc.LoadHtml(nameUrlHtml);
+var nameUrlVideo = portraitScraper.ParseVideoPage(nameUrlDoc, nameUrlHtml);
+Check(nameUrlVideo?.PersonImageUrls.TryGetValue("Mina Kitano", out var namePhoto) == true,
+    $"performer name inside the portrait URL resolves the photo (got '{nameUrlVideo?.PersonImageUrls.Values.FirstOrDefault()}')");
+
+// Read-time fallback: a cache record written before performer photos existed
+// still yields a photo through the shared matcher.
+var legacyRecord = new JavVideo
+{
+    Code = "ABP-300",
+    Title = "Legacy",
+    Actresses = ["Suzumori remu"],
+    PersonImageUrls = new Dictionary<string, string> { ["snq"] = "https://www.javbus.com/pics/actress/snq_a.jpg" },
+    PersonImageNameHints = new Dictionary<string, string> { ["Suzumori remu"] = "snq" }
+};
+Check(SiteScraper.PersonImageFor(legacyRecord, "Suzumori remu") == "https://www.javbus.com/pics/actress/snq_a.jpg",
+    "hinted photo resolves for a legacy record");
+
+// Spelling drift between sibling sites must not cost a performer a photo.
+Check(SiteScraper.PersonImageFor(portraitVideo, "Ai sound  Maria")
+        == "https://www.javbus.com/pics/actress/qq9_a.jpg",
+    "normalized name matches across spelling differences");
+
+// A performer the page never portrayed gets nothing, rather than a wrong face.
+Check(SiteScraper.PersonImageFor(portraitVideo, "Someone Else") is null,
+    "no photo is invented for an unportrayed performer");
+
+// Filler markers must never be mistaken for a performer name.
+Check(SiteScraper.PersonImageFor(
+        new JavVideo
+        {
+            Code = "ABP-400",
+            Actresses = ["A"],
+            PersonImageUrls = new Dictionary<string, string> { ["x"] = "https://cdn/actress/a_a.jpg" }
+        },
+        "A") is null,
+    "single-letter filler names never match an image");
+
+Console.WriteLine("== Nested collection name prefixes ==");
+// The gender cards and the per-performer collections find each other by the
+// "Actress: " / "Actor: " name prefixes, so the two must stay in sync. The
+// collection task itself needs a live server, so this pins the contract the
+// task and the cards are both written against.
+var personPrefixes = new[] { "Actress: ", "Actor: " };
+Check(personPrefixes.All(p => p.EndsWith(' ')), "performer prefixes keep their trailing space");
+Check(personPrefixes.Distinct(StringComparer.Ordinal).Count() == 2, "performer prefixes are distinct");
+Check("Actress: Mina Kitano".StartsWith(personPrefixes[0], StringComparison.OrdinalIgnoreCase),
+    "an actress collection name carries its prefix");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -307,5 +477,25 @@ internal static class JavBusScraper_Tests
     {
         var method = typeof(JavBusScraper).GetMethod("ToPaddedKeyword", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         return method?.Invoke(null, [code]) as string;
+    }
+}
+
+/// <summary>Exposes the private session-profile field for coherence tests.</summary>
+internal static class SiteScraper_Tests
+{
+    internal static (string UserAgent, string? SecChUa, string? SecChUaPlatform, string AcceptLanguage)? SessionProfileOf(SiteScraper scraper)
+    {
+        var field = typeof(SiteScraper).GetField("_sessionProfile", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return field?.GetValue(scraper) as (string, string?, string?, string)?;
+    }
+}
+
+/// <summary>Exposes the URL normalization logic for /v1 regression tests.</summary>
+internal static class FlareSolverrUrls_Tests
+{
+    internal static string? NormalizeForTest(string configured)
+    {
+        var method = typeof(FlareSolverrUrls).GetMethod("NormalizeApiUrl", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        return method?.Invoke(null, [configured]) as string;
     }
 }

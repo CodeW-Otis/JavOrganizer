@@ -442,13 +442,20 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             code,
             cap);
 
-        // Fan out to every selected site simultaneously; each one finds its
-        // page, follows candidates and parses on its own. Each site also
-        // reports whether it was genuinely reachable (not rate-limited,
-        // banned or blocked away), which keeps transient failures from
-        // turning into cached "not found" results.
+        // Fan out to every selected site simultaneously, staggered by a
+        // short organic offset (0–150 ms per site, like a browser opening
+        // tabs one after another) so parallel requests never leave in a
+        // perfectly synchronized burst. Each site finds its page, follows
+        // candidates and parses on its own. Each site also reports whether
+        // it was genuinely reachable (not rate-limited, banned or blocked
+        // away), which keeps transient failures from turning into cached
+        // "not found" results.
         var tasks = selected
-            .Select(s => GuardAsync(s.FindByCodeAsync(code, ct), s, SiteNameOf(s), code))
+            .Select((s, i) => GuardAsync(
+                StaggeredScrapeAsync(s, i, code, ct),
+                s,
+                SiteNameOf(s),
+                code))
             .ToList();
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -464,6 +471,30 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         }
 
         return new ScrapeOutcome(merged, anySiteReached);
+    }
+
+    /// <summary>
+    /// Runs one site's scrape after a short organic stagger, so the
+    /// simultaneous fan-out does not fire every request at the same
+    /// millisecond. The offset is randomized per site and per code —
+    /// a machine-identical launch pattern is itself a bot tell.
+    /// </summary>
+    /// <param name="scraper">The site to scrape.</param>
+    /// <param name="index">Position in the fan-out (0-based).</param>
+    /// <param name="code">Product code being scraped.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The site's record.</returns>
+    private static async Task<JavVideo?> StaggeredScrapeAsync(SiteScraper scraper, int index, string code, CancellationToken ct)
+    {
+        // 0–150 ms per position, bounded: at most ~2 s with a 20-site cap,
+        // keeping the fan-out fast while organic.
+        var offsetMs = Random.Shared.Next(0, 150) * (index + 1) / 2;
+        if (offsetMs > 0)
+        {
+            await Task.Delay(offsetMs, ct).ConfigureAwait(false);
+        }
+
+        return await scraper.FindByCodeAsync(code, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -533,6 +564,26 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         primary.Director = PreferLatinText(primary.Director, secondary.Director);
         primary.Label = PreferLatinText(primary.Label, secondary.Label);
         primary.CoverUrl ??= secondary.CoverUrl;
+
+        // Performer photos: first site to provide a photo for a name wins;
+        // later sites only fill names that are still missing one.
+        foreach (var (name, url) in secondary.PersonImageUrls)
+        {
+            primary.PersonImageUrls.TryAdd(name, url);
+        }
+
+        // The same for the fragments that map a performer onto a portrait,
+        // so a record whose photo map came from another site can still be
+        // resolved back to that site's image.
+        foreach (var (name, hint) in secondary.PersonImageNameHints)
+        {
+            primary.PersonImageNameHints.TryAdd(name, hint);
+        }
+
+        foreach (var (name, starId) in secondary.CastStarIds)
+        {
+            primary.CastStarIds.TryAdd(name, starId);
+        }
 
         if (primary.Genres.Count == 0 && secondary.Genres.Count > 0)
         {

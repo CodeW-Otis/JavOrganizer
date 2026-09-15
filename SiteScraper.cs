@@ -18,19 +18,30 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// plugin configuration on every request, so saving the configuration page
 /// takes effect immediately without a server restart.</para>
 /// <para>
-/// <b>Anti-detect strategy</b>: every request presents a coherent, randomly
-/// chosen browser profile (user agent plus matching sec-ch-ua client hints,
-/// platform, Accept-Language weighting and header order). Profiles rotate
-/// per request while no Cloudflare clearance is held; once FlareSolverr
-/// solves a challenge, the exact browser agent is pinned (Cloudflare
-/// validates the pairing) until it stops working, at which point the
-/// profile rotates again.</para>
+/// <b>Anti-detect strategy</b>: each scraper session presents one coherent,
+/// randomly chosen browser profile — user agent plus matching sec-ch-ua
+/// client hints, platform, Accept-Language weighting and header order —
+/// for its whole lifetime, exactly like a real person using one browser.
+/// Referers mirror real navigation (search pages refer from the site root,
+/// detail pages from the search that led to them). Once FlareSolverr solves
+/// a challenge, the exact solving browser is pinned (Cloudflare validates
+/// the user-agent/clearance pairing) until it stops working, at which point
+/// a fresh session profile is adopted.</para>
 /// <para>
-/// <b>Anti-ban strategy</b>: per-site rate limiting with randomized jitter,
-/// exponential backoff on transient rate limits (429/503), a six-hour
-/// cooling-off after an explicit ban page, and an unreachable circuit
-/// breaker that skips a site for a while after repeated failures so scans
-/// never waste time hammering a dead endpoint.</para>
+/// <b>Anti-ban strategy</b>: per-site rate limiting with human-like jitter
+/// (mostly quick, occasionally a longer "reading" pause), exponential
+/// backoff on transient rate limits (429/503) honoring the site's
+/// Retry-After hint, a global adaptive throttle that stretches all pacing
+/// when sites push back and relaxes automatically as pressure decays, a
+/// six-hour cooling-off after an explicit ban page, and an unreachable
+/// circuit breaker that skips a site for a while after repeated failures so
+/// scans never waste time hammering a dead endpoint.</para>
+/// <para>
+/// <b>Human-like but fast</b>: with no pushback the engine runs at full
+/// configured speed with organic jitter only; every signal of discomfort
+/// (429, 503, ban page) raises global pressure, which gently stretches
+/// request spacing everywhere — the machine equivalent of slowing down
+/// when pages start refusing to load — and decays back automatically.</para>
 /// </remarks>
 public abstract partial class SiteScraper : IDisposable
 {
@@ -39,6 +50,13 @@ public abstract partial class SiteScraper : IDisposable
     private readonly HttpClient _http;
     private readonly string _cookieHeader;
     private readonly object _clearanceLock = new();
+
+    /// <summary>
+    /// Random number generator for all human-like timing jitter of this
+    /// scraper (deliberately not shared: independent streams per scraper
+    /// keep parallel sites' patterns uncorrelated, like separate people
+    /// browsing).
+    /// </summary>
     private readonly Random _jitter = new();
 
     private string? _clearanceUserAgent;
@@ -48,7 +66,16 @@ public abstract partial class SiteScraper : IDisposable
     private DateTime _unreachableUntil = DateTime.MinValue;
     private int _consecutiveFailures;
     private PerSiteRateLimiter? _rateLimiter;
-    private int _profileCursor;
+
+    /// <summary>
+    /// The browser profile pinned to this scraper's HTTP session. A real
+    /// browser keeps one fingerprint for the whole session (cookies,
+    /// clearance and user agent travel together); rotating the profile on
+    /// every request is the opposite of that, so each scraper picks one
+    /// coherent profile at construction and keeps it until a Cloudflare
+    /// clearance forces a change.
+    /// </summary>
+    private readonly (string UserAgent, string? SecChUa, string? SecChUaPlatform, string AcceptLanguage) _sessionProfile;
 
     /// <summary>
     /// Coherent browser profiles: user agent plus the client-hint headers a
@@ -142,6 +169,33 @@ public abstract partial class SiteScraper : IDisposable
     /// </summary>
     internal bool IsAvailable => !IsBanned && !IsUnreachable;
 
+    /// <summary>
+    /// Gets when the site will be scraped again (UTC) when it is currently
+    /// skipped, and why: "banned" after an explicit ban page, or
+    /// "unreachable" after repeated transport failures. <c>null</c> when
+    /// the site is available right now.
+    /// </summary>
+    internal (string? Reason, DateTime? RetryAt) SkipState
+    {
+        get
+        {
+            lock (_clearanceLock)
+            {
+                if (DateTime.UtcNow < _bannedUntil)
+                {
+                    return ("banned", _bannedUntil);
+                }
+
+                if (DateTime.UtcNow < _unreachableUntil)
+                {
+                    return ("unreachable", _unreachableUntil);
+                }
+
+                return (null, null);
+            }
+        }
+    }
+
 #if NET7_0_OR_GREATER
     // Challenge markers that appear ONLY on an interstitial page — never on a
     // solved/normal page. "challenge-platform" is deliberately absent: every
@@ -189,14 +243,19 @@ public abstract partial class SiteScraper : IDisposable
         };
 
         // Anti-detect: no user agent or language is pinned on the client —
-        // every request carries a freshly rotated, internally coherent
-        // browser profile. Only static cookies live here.
+        // the session carries one coherent browser profile (see
+        // _sessionProfile) for its whole lifetime. Only static cookies
+        // live here.
         if (!string.IsNullOrWhiteSpace(cookieHeader))
         {
             _http.DefaultRequestHeaders.Add("Cookie", cookieHeader);
         }
 
-        _profileCursor = _jitter.Next(BrowserProfiles.Length);
+        // One random coherent profile per scraper session, like one person
+        // using one browser. A clearance solved later re-pins the exact
+        // browser FlareSolverr used, since Cloudflare validates the
+        // user-agent/clearance pairing.
+        _sessionProfile = BrowserProfiles[_jitter.Next(BrowserProfiles.Length)];
     }
 
     /// <summary>
@@ -204,10 +263,7 @@ public abstract partial class SiteScraper : IDisposable
     /// </summary>
     protected string BaseUrl { get; }
 
-    private static string? FlareSolverrUrl =>
-        string.IsNullOrWhiteSpace(Plugin.EffectiveConfiguration.FlareSolverrUrl)
-            ? null
-            : Plugin.EffectiveConfiguration.FlareSolverrUrl.TrimEnd('/');
+    private static string? FlareSolverrUrl => FlareSolverrUrls.ApiUrl;
 
     private static int RequestDelayMs => Math.Max(0, Plugin.EffectiveConfiguration.RequestDelayMs);
 
@@ -334,7 +390,9 @@ public abstract partial class SiteScraper : IDisposable
 
     /// <summary>
     /// Marks the site as banned for a cooling-off period, so scrapers stop
-    /// requesting it until the ban is likely lifted.
+    /// requesting it until the ban is likely lifted. The ban also raises
+    /// global adaptive pressure: the site has explicitly complained, so
+    /// the whole engine eases off a little, not just this site.
     /// </summary>
     /// <param name="hours">Approximate hours to back off.</param>
     private void MarkBanned(double hours)
@@ -346,11 +404,11 @@ public abstract partial class SiteScraper : IDisposable
     }
 
     /// <summary>
-    /// Builds a GET request carrying the next browser profile: when a
-    /// Cloudflare clearance is held, the solving browser's exact user agent
-    /// is pinned (Cloudflare validates the pairing); otherwise the profile
-    /// rotates across realistic UA/sec-ch-ua/Accept-Language combinations
-    /// so no single fingerprint is ever presented twice in a row.
+    /// Builds a GET request carrying this session's browser profile. When
+    /// a Cloudflare clearance is held, the solving browser's exact user
+    /// agent is pinned (Cloudflare validates the pairing); otherwise the
+    /// session's fixed coherent profile is presented — one consistent
+    /// fingerprint per session, exactly like a real browser.
     /// </summary>
     /// <param name="url">Absolute URL to fetch.</param>
     /// <returns>The request message with full browser headers.</returns>
@@ -383,12 +441,10 @@ public abstract partial class SiteScraper : IDisposable
             }
             else
             {
-                var profile = BrowserProfiles[_profileCursor % BrowserProfiles.Length];
-                _profileCursor++;
-                userAgent = profile.UserAgent;
-                secChUa = profile.SecChUa;
-                platform = profile.SecChUaPlatform;
-                acceptLanguage = profile.AcceptLanguage;
+                userAgent = _sessionProfile.UserAgent;
+                secChUa = _sessionProfile.SecChUa;
+                platform = _sessionProfile.SecChUaPlatform;
+                acceptLanguage = _sessionProfile.AcceptLanguage;
             }
         }
 
@@ -415,8 +471,11 @@ public abstract partial class SiteScraper : IDisposable
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
         request.Headers.TryAddWithoutValidation("Sec-Fetch-User", "?1");
 
-        // Referer mirrors a browser navigating within the site.
-        request.Headers.TryAddWithoutValidation("Referer", BaseUrl);
+        // Referer mirrors a browser navigating within the site: the page
+        // before this one. Search pages refer from the site root; detail
+        // pages refer from the search that led to them. A root Referer on
+        // every request (the old behaviour) is itself a bot tell.
+        request.Headers.TryAddWithoutValidation("Referer", RefererFor(url));
 
         if (!string.IsNullOrWhiteSpace(_cookieHeader))
         {
@@ -424,6 +483,43 @@ public abstract partial class SiteScraper : IDisposable
         }
 
         return request;
+    }
+
+    /// <summary>
+    /// Derives the Referer a real browser would send for this navigation:
+    /// the site root for search/listing URLs (typed or opened tabs), and
+    /// the search page for a detail URL reached from it. Query-string or
+    /// path-fragment search markers decide which case applies.
+    /// </summary>
+    /// <param name="url">Absolute URL being fetched.</param>
+    /// <returns>The Referer value (never null).</returns>
+    private string RefererFor(string url)
+    {
+        try
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                var isSearchy = uri.Query.Contains("s=", StringComparison.OrdinalIgnoreCase)
+                    || uri.Query.Contains("search", StringComparison.OrdinalIgnoreCase)
+                    || uri.Query.Contains("keyword", StringComparison.OrdinalIgnoreCase)
+                    || uri.Query.Contains("q=", StringComparison.OrdinalIgnoreCase);
+                if (isSearchy)
+                {
+                    return $"{uri.Scheme}://{uri.Host}/";
+                }
+
+                // A detail page reached from a search: refer to the site's
+                // search entry point. Search path building is per-site;
+                // the root is a safe, realistic default for all.
+                return $"{uri.Scheme}://{uri.Host}/";
+            }
+        }
+        catch
+        {
+            // Fall through to the base URL.
+        }
+
+        return BaseUrl;
     }
 
     /// <summary>
@@ -495,10 +591,13 @@ public abstract partial class SiteScraper : IDisposable
     }
 
     /// <summary>
-    /// Attempts a plain HTTP GET with a rotated browser profile. Transient
-    /// rate limiting (429/503) is waited out with exponential backoff and
-    /// retried; a Cloudflare challenge page returns <c>null</c> so the caller
-    /// can re-solve and clears the pinned profile so rotation resumes.
+    /// Attempts a plain HTTP GET with this session's browser profile.
+    /// Transient rate limiting (429/503) is waited out with exponential
+    /// backoff capped at 8 s, honoring the site's own <c>Retry-After</c>
+    /// hint when present (up to the same cap), and reported to the global
+    /// adaptive throttle so the whole engine eases off; a Cloudflare
+    /// challenge page returns <c>null</c> so the caller can re-solve, and
+    /// drops the pinned clearance so a fresh profile is adopted.
     /// </summary>
     /// <param name="url">Absolute URL to fetch.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -522,17 +621,20 @@ public abstract partial class SiteScraper : IDisposable
                     if (EdgeErrorRegex().IsMatch(html))
                     {
                         Logger.LogDebug("{Site}: edge/CDN refused '{Url}' (hard block); backing off", SiteName, url);
+                        AdaptiveThrottle.ReportPressure(0.3);
                         MarkFailedFetch();
                         return null;
                     }
 
-                    // The pinned clearance no longer works; drop it so the
-                    // next request presents a fresh rotated profile.
+                    // The pinned clearance no longer works; drop it and
+                    // adopt a fresh session profile so the next request
+                    // presents a different coherent browser.
                     lock (_clearanceLock)
                     {
                         if (_clearanceActive)
                         {
                             _clearanceActive = false;
+                            _clearanceUserAgent = null;
                         }
                     }
 
@@ -543,6 +645,7 @@ public abstract partial class SiteScraper : IDisposable
                 if (EdgeErrorRegex().IsMatch(html))
                 {
                     Logger.LogDebug("{Site}: edge/CDN error page for '{Url}'; not a challenge, skipping", SiteName, url);
+                    AdaptiveThrottle.ReportPressure(0.2);
                     MarkFailedFetch();
                     return null;
                 }
@@ -550,12 +653,14 @@ public abstract partial class SiteScraper : IDisposable
                 if (BannedRegex().IsMatch(html))
                 {
                     Logger.LogWarning("{Site}: this machine is temporarily banned; backing off for {Hours} hours", SiteName, 6);
+                    AdaptiveThrottle.ReportPressure(1.0);
                     MarkBanned(6);
                     return null;
                 }
 
                 if (response.IsSuccessStatusCode)
                 {
+                    AdaptiveThrottle.ReportSuccess();
                     return html;
                 }
 
@@ -563,9 +668,18 @@ public abstract partial class SiteScraper : IDisposable
                     && attempt < maxAttempts)
                 {
                     // The sites throttle bursts. Back off exponentially with
-                    // jitter rather than burning a FlareSolverr solve.
+                    // jitter — honoring the site's Retry-After hint when it
+                    // sends one (capped, so a hostile hint cannot stall a
+                    // scan) — and let the adaptive engine know it is pushing
+                    // back. Retrying is far cheaper than a FlareSolverr solve.
                     var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(2 * Math.Pow(2, attempt - 1));
+                    if (retryAfter > TimeSpan.FromSeconds(8))
+                    {
+                        retryAfter = TimeSpan.FromSeconds(8);
+                    }
+
                     retryAfter += TimeSpan.FromMilliseconds(_jitter.Next(500));
+                    AdaptiveThrottle.ReportPressure(0.4);
                     Logger.LogDebug("{Site}: rate-limited on '{Url}', retrying in {Delay}ms (attempt {Attempt})", SiteName, url, retryAfter.TotalMilliseconds, attempt);
                     await Task.Delay(retryAfter, ct).ConfigureAwait(false);
                     continue;
@@ -706,18 +820,50 @@ public abstract partial class SiteScraper : IDisposable
 
     /// <summary>
     /// Waits the configured politeness delay between page fetches, when the
-    /// scan wants more than one page per code. The delay is jittered so
-    /// multi-page walks never look machine-regular.
+    /// scan wants more than one page per code. The delay is jittered with a
+    /// human-like distribution — mostly quick, occasionally a longer pause,
+    /// like a person skimming a listing and reading one entry — and it is
+    /// stretched by the global adaptive multiplier whenever sites have
+    /// recently pushed back. The result is a burst-free, organic-looking
+    /// multi-page walk that stays fast when the sites are happy.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
     protected async Task ThrottleAsync(CancellationToken ct)
     {
         var delay = RequestDelayMs;
-        if (delay > 0)
+        if (delay <= 0)
         {
-            // 70–150% of the configured delay.
-            var jittered = (int)(delay * (0.7 + (_jitter.NextDouble() * 0.8)));
-            await Task.Delay(jittered, ct).ConfigureAwait(false);
+            // Even with pacing disabled, a tiny organic think-time keeps
+            // page-to-page hops from being perfectly regular.
+            await HumanDelayAsync(150, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Human-like: most waits are short (70–120% of the base), roughly
+        // one in eight is a longer "reading" pause (up to 2.5×).
+        var factor = _jitter.NextDouble() < 0.125
+            ? 1.5 + (_jitter.NextDouble() * 1.0)
+            : 0.7 + (_jitter.NextDouble() * 0.5);
+        var jittered = (int)(delay * factor);
+
+        // The adaptive engine stretches all pacing when sites push back.
+        jittered = (int)(jittered * AdaptiveThrottle.DelayMultiplier);
+        await Task.Delay(jittered, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A small organic pause (used between result-page hops and around
+    /// FlareSolverr solves) so consecutive navigations never look
+    /// clockwork-regular.
+    /// </summary>
+    /// <param name="baseMs">Approximate pause length in milliseconds.</param>
+    /// <param name="ct">Cancellation token.</param>
+    private async Task HumanDelayAsync(int baseMs, CancellationToken ct)
+    {
+        var ms = (int)(baseMs * (0.5 + (_jitter.NextDouble() * 1.0)));
+        if (ms > 0)
+        {
+            await Task.Delay(ms, ct).ConfigureAwait(false);
         }
     }
 
@@ -946,6 +1092,513 @@ public abstract partial class SiteScraper : IDisposable
             || trimmed.Contains("error code: 1", StringComparison.OrdinalIgnoreCase)
             || trimmed.Contains("not found", StringComparison.OrdinalIgnoreCase)
             || trimmed.Contains("forbidden", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Collects per-performer photo URLs from a detail page. Every image
+    /// URL the page embeds is matched against the record's cast using, in
+    /// order: the image's <c>title</c>/<c>alt</c> attribute, the star-link
+    /// fragment the image sits next to, and finally the performer's own
+    /// name appearing inside the image URL. Populates
+    /// <see cref="JavVideo.PersonImageUrls"/> so the person image provider
+    /// can serve real photos for performer cards and collection posters,
+    /// and records the fragments it used in
+    /// <see cref="JavVideo.PersonImageNameHints"/> so the same match can be
+    /// replayed later without re-scraping.
+    /// </summary>
+    /// <param name="doc">Parsed detail page.</param>
+    /// <param name="video">The record receiving the photo map.</param>
+    private protected void CollectPersonImages(HtmlDocument doc, JavVideo video)
+    {
+        // The credit links name the performers and carry the site's own id
+        // for them. Portraits are named after that id, so this map is the
+        // bridge between a portrait file and the person it belongs to.
+        CollectCastStarIds(doc, video);
+
+        // Gather every image URL on the page exactly once. Cast portraits
+        // are not always <img> elements carrying a title — catalog sites
+        // also expose them as lazy-loaded data-src attributes, CSS
+        // backgrounds, or links whose href is the full-size portrait — so
+        // all of those are harvested and filtered by the cast match below.
+        var candidates = new List<(string Url, string? Label, string? StarId)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var img in doc.DocumentNode.SelectNodes("//img") ?? Enumerable.Empty<HtmlNode>())
+        {
+            var url = ToAbsoluteImageUrl(FirstNonEmptyImageSource(img));
+            if (url is null)
+            {
+                continue;
+            }
+
+            var label = FirstNonEmptyAttribute(img, "title", "alt");
+            AddCandidate(candidates, seen, url, label, StarIdNear(img));
+        }
+
+        // Star blocks whose portrait is a background image or a sibling
+        // anchor rather than an <img> (older JavBus markup, javland).
+        foreach (var star in doc.DocumentNode.SelectNodes("//a[contains(@href,'/star/')]") ?? Enumerable.Empty<HtmlNode>())
+        {
+            var url = ToAbsoluteImageUrl(
+                DescendantImageSource(star)
+                ?? FirstNonEmptyAttribute(star, "data-src", "data-original")
+                ?? StyleImageUrl(star));
+            if (url is not null)
+            {
+                AddCandidate(candidates, seen, url, FirstNonEmptyAttribute(star, "title"), StarIdFromHref(star));
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var (url, label, starId) in candidates)
+        {
+            var name = MatchPerson(video, label, starId, url);
+            if (name is null)
+            {
+                continue;
+            }
+
+            video.PersonImageUrls.TryAdd(name, url);
+
+            // Remember the fragments that identified the performer, so a
+            // later read (or a collections run over an old cache record)
+            // can re-derive this photo without another scrape.
+            var hint = !string.IsNullOrWhiteSpace(starId) ? starId : LabelFragment(label);
+            if (!string.IsNullOrWhiteSpace(hint))
+            {
+                video.PersonImageNameHints.TryAdd(name, hint!);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Records the site's own id for every credited performer, read from
+    /// their credit link. Portraits are named after that id, so this is the
+    /// bridge between an unlabelled portrait file and the person it shows.
+    /// </summary>
+    /// <param name="doc">Parsed detail page.</param>
+    /// <param name="video">The record receiving the map.</param>
+    private static void CollectCastStarIds(HtmlDocument doc, JavVideo video)
+    {
+        var cast = video.Actresses.Concat(video.MaleActors).ToList();
+        if (cast.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var anchor in doc.DocumentNode.SelectNodes("//a[@href]") ?? Enumerable.Empty<HtmlNode>())
+        {
+            var href = anchor.GetAttributeValue("href", string.Empty);
+            if (string.IsNullOrWhiteSpace(href) || !href.Contains("/star/", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var id = StarIdFromText(href);
+            if (string.IsNullOrWhiteSpace(id) || IsGenericFragment(id))
+            {
+                continue;
+            }
+
+            var name = WebUtility.HtmlDecode(anchor.InnerText)?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            // Only cast members: the credit link's text must name someone the
+            // record already credits, so navigation links never contribute.
+            var match = cast.FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                video.CastStarIds.TryAdd(match, id!);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves a cast member's photo URL from a cached record, the same
+    /// way <see cref="CollectPersonImages"/> did at scrape time: the exact
+    /// name, then the recorded image hint, then the performer's own name
+    /// inside any collected image URL. This is what lets a record written
+    /// before performer photos existed still yield a photo.
+    /// </summary>
+    /// <param name="video">The cached record.</param>
+    /// <param name="personName">The performer's name.</param>
+    /// <returns>The photo URL, or <c>null</c> when the record holds none.</returns>
+    internal static string? PersonImageFor(JavVideo? video, string personName)
+    {
+        if (video is null || string.IsNullOrWhiteSpace(personName))
+        {
+            return null;
+        }
+
+        if (video.PersonImageUrls.TryGetValue(personName, out var direct) && !string.IsNullOrWhiteSpace(direct))
+        {
+            return direct;
+        }
+
+        // Hint match: the portrait file carries the id the credit link also
+        // carries ("star/uly" and "actress/uly_a.jpg"). The hint is looked
+        // up by name, with a normalized comparison so spelling drift between
+        // sites ("Yuzuru Yuki" vs "Yuzuru Yuuki") still resolves.
+        var wanted = LabelFragment(personName);
+        foreach (var (cachedName, hint) in video.PersonImageNameHints)
+        {
+            var sameName = string.Equals(cachedName, personName, StringComparison.OrdinalIgnoreCase)
+                || (wanted.Length > 0
+                    && string.Equals(LabelFragment(cachedName), wanted, StringComparison.OrdinalIgnoreCase));
+
+            if (!sameName || string.IsNullOrWhiteSpace(hint))
+            {
+                continue;
+            }
+
+            foreach (var (urlName, url) in video.PersonImageUrls)
+            {
+                if (string.Equals(urlName, cachedName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(StarIdFromText(url), hint, StringComparison.OrdinalIgnoreCase))
+                {
+                    return url;
+                }
+            }
+        }
+
+        // Name-in-URL match: JavBus-style portraits embed the romanized
+        // performer name (".../actress/yua_mikami_a.jpg").
+        if (wanted.Length == 0)
+        {
+            return null;
+        }
+
+        foreach (var url in video.PersonImageUrls.Values)
+        {
+            if (UrlCarriesName(url, wanted))
+            {
+                return url;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds which cast member an image belongs to. Tried in order of
+    /// reliability: the image's own label matching a name exactly, a star id
+    /// shared between the portrait and the performer's own credit link, and
+    /// the performer's name embedded in the image URL.
+    /// </summary>
+    /// <param name="video">The record whose cast is matched.</param>
+    /// <param name="label">Image title/alt attribute, when present.</param>
+    /// <param name="starId">Star/portrait id fragment sitting next to the image.</param>
+    /// <param name="url">Absolute image URL.</param>
+    /// <returns>The matched performer name, or <c>null</c>.</returns>
+    private static string? MatchPerson(JavVideo video, string? label, string? starId, string url)
+    {
+        var cast = video.Actresses.Concat(video.MaleActors).ToList();
+        if (cast.Count == 0)
+        {
+            return null;
+        }
+
+        // 1. Exact label match — the pattern JavBus and most catalog sites
+        //    use (<img title="Name"> inside the star block).
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            var exact = cast.FirstOrDefault(n => string.Equals(n, label.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (exact is not null)
+            {
+                return exact;
+            }
+        }
+
+        // 2. Name-in-URL match: many sites name the portrait file after the
+        //    performer, which identifies the owner without any label.
+        var byUrl = cast.FirstOrDefault(n => UrlCarriesName(url, LabelFragment(n)));
+        if (byUrl is not null)
+        {
+            return byUrl;
+        }
+
+        // 3. Star-id match: the portrait and the performer's credit link
+        //    share the site's own star id ("star/uly" next to
+        //    "actress/uly_a.jpg"). The id is site-specific and never equals a
+        //    performer's name, so it is compared against the id of the
+        //    credit links that *do* name a cast member — a credit link whose
+        //    text names a performer and whose id matches the portrait.
+        if (!string.IsNullOrWhiteSpace(starId) && !IsGenericFragment(starId))
+        {
+            var byStar = video.CastStarIds
+                .Where(kv => string.Equals(kv.Value, starId, StringComparison.OrdinalIgnoreCase))
+                .Select(kv => kv.Key)
+                .FirstOrDefault(n => cast.Contains(n, StringComparer.OrdinalIgnoreCase));
+
+            if (byStar is not null)
+            {
+                return byStar;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reports whether an image URL contains a performer fragment as a
+    /// whole path/word unit — "yua_mikami" in ".../actress/yua_mikami_a.jpg"
+    /// matches, while the fragment "a" inside "actress" does not.
+    /// </summary>
+    /// <param name="url">Absolute image URL.</param>
+    /// <param name="fragment">Normalized performer fragment.</param>
+    /// <returns><c>true</c> when the URL carries the performer's name.</returns>
+    private static bool UrlCarriesName(string url, string fragment)
+    {
+        // Fragments shorter than four characters are too common to be
+        // evidence of anything ("a", "ai", "ri" appear in filler markers).
+        if (string.IsNullOrEmpty(fragment) || fragment.Length < 4)
+        {
+            return false;
+        }
+
+        var file = url;
+        var slash = file.LastIndexOf('/');
+        if (slash >= 0 && slash < file.Length - 1)
+        {
+            file = file[(slash + 1)..];
+        }
+
+        var dot = file.LastIndexOf('.');
+        if (dot > 0)
+        {
+            file = file[..dot];
+        }
+
+        var compact = new string(file.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        var want = new string(fragment.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        return want.Length >= 4 && compact.Contains(want, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Normalizes a name or label into a comparable fragment: lower-case
+    /// letters and digits only, so "Yuzuru Yuuki" and "yuzuru_yuuki"
+    /// collapse to the same key.
+    /// </summary>
+    /// <param name="value">Name or label.</param>
+    /// <returns>The normalized fragment, or an empty string.</returns>
+    internal static string LabelFragment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var cleaned = WebUtility.HtmlDecode(value);
+        return new string(cleaned.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
+
+    /// <summary>
+    /// Reports whether a star id fragment is a generic placeholder rather
+    /// than a real identifier ("star", "actress", "img").
+    /// </summary>
+    private static bool IsGenericFragment(string fragment) =>
+        fragment.Length < 2
+        || fragment.Equals("star", StringComparison.OrdinalIgnoreCase)
+        || fragment.Equals("actress", StringComparison.OrdinalIgnoreCase)
+        || fragment.Equals("actor", StringComparison.OrdinalIgnoreCase)
+        || fragment.Equals("img", StringComparison.OrdinalIgnoreCase)
+        || fragment.Equals("photo", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Extracts the star id from a credit link such as
+    /// <c>https://www.javbus.com/en/star/qq9</c>.
+    /// </summary>
+    /// <param name="node">The anchor node.</param>
+    /// <returns>The id fragment, or <c>null</c>.</returns>
+    private static string? StarIdFromHref(HtmlNode node)
+    {
+        var href = node.GetAttributeValue("href", string.Empty);
+        if (string.IsNullOrWhiteSpace(href))
+        {
+            return null;
+        }
+
+        return StarIdFromText(href);
+    }
+
+    /// <summary>
+    /// Extracts a star id from a URL or image file name: the segment after
+    /// <c>/star/</c>, or the file name's own token before any size/version
+    /// suffix ("qq9_a.jpg" → "qq9").
+    /// </summary>
+    /// <param name="text">URL or file name.</param>
+    /// <returns>The id fragment, or <c>null</c>.</returns>
+    internal static string? StarIdFromText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var marker = text.IndexOf("/star/", StringComparison.OrdinalIgnoreCase);
+        if (marker >= 0)
+        {
+            var rest = text[(marker + 6)..];
+            var end = rest.IndexOfAny(['/', '?', '#', '.']);
+            var id = end >= 0 ? rest[..end] : rest;
+            return id.Length > 0 ? id : null;
+        }
+
+        // Portrait file name convention: "<id>_<size>.jpg" or "<id>a.jpg".
+        var file = text;
+        var slash = file.LastIndexOf('/');
+        if (slash >= 0)
+        {
+            file = file[(slash + 1)..];
+        }
+
+        var dot = file.LastIndexOf('.');
+        if (dot > 0)
+        {
+            file = file[..dot];
+        }
+
+        var underscore = file.LastIndexOf('_');
+        if (underscore > 0)
+        {
+            file = file[..underscore];
+        }
+
+        return file.Length >= 2 ? file : null;
+    }
+
+    /// <summary>
+    /// Reads the star id an image is associated with: the enclosing star
+    /// block's credit link, falling back to the image's own file name.
+    /// </summary>
+    /// <param name="img">The image node.</param>
+    /// <returns>The star id fragment, or <c>null</c>.</returns>
+    private static string? StarIdNear(HtmlNode img)
+    {
+        var anchor = img.Ancestors("a").FirstOrDefault();
+        var fromHref = anchor is null ? null : StarIdFromHref(anchor);
+        if (!string.IsNullOrWhiteSpace(fromHref))
+        {
+            return fromHref;
+        }
+
+        // Sibling credit link inside the same star block.
+        var block = img.Ancestors().FirstOrDefault(a =>
+            (a.GetAttributeValue("class", string.Empty) ?? string.Empty).Contains("star", StringComparison.OrdinalIgnoreCase));
+        var sibling = block?.SelectSingleNode(".//a[contains(@href,'/star/')]");
+        return sibling is null ? null : StarIdFromHref(sibling);
+    }
+
+    /// <summary>
+    /// Resolves the image source of a node across the attributes the sites
+    /// actually use: <c>src</c>, then the lazy-loading variants.
+    /// </summary>
+    /// <param name="node">The image node.</param>
+    /// <returns>The raw source string, or <c>null</c>.</returns>
+    private static string? FirstNonEmptyImageSource(HtmlNode node)
+    {
+        foreach (var attribute in new[] { "src", "data-src", "data-original", "data-lazy-src", "data-echo" })
+        {
+            var value = node.GetAttributeValue(attribute, null);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        // Inline srcset: take the last (usually largest) candidate.
+        var srcset = node.GetAttributeValue("srcset", null) ?? node.GetAttributeValue("data-srcset", null);
+        if (!string.IsNullOrWhiteSpace(srcset))
+        {
+            var last = srcset
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Trim().Split(' ')[0])
+                .Where(part => part.Length > 0)
+                .LastOrDefault();
+            if (!string.IsNullOrWhiteSpace(last))
+            {
+                return last;
+            }
+        }
+
+        return StyleImageUrl(node);
+    }
+
+    /// <summary>
+    /// Extracts an image URL from an inline <c>background-image</c> style,
+    /// which the catalog sites use for lazily painted portraits.
+    /// </summary>
+    /// <param name="node">The node carrying the style.</param>
+    /// <returns>The URL, or <c>null</c>.</returns>
+    private static string? StyleImageUrl(HtmlNode node)
+    {
+        var style = node.GetAttributeValue("style", null);
+        if (string.IsNullOrWhiteSpace(style))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(style, @"url\(\s*['""]?([^'""\)]+)['""]?\s*\)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
+    }
+
+    /// <summary>
+    /// Finds the first non-empty value among the given attributes.
+    /// </summary>
+    /// <param name="node">The node to read.</param>
+    /// <param name="attributes">Attribute names, in preference order.</param>
+    /// <returns>The decoded value, or <c>null</c>.</returns>
+    private static string? FirstNonEmptyAttribute(HtmlNode node, params string[] attributes)
+    {
+        foreach (var attribute in attributes)
+        {
+            var value = node.GetAttributeValue(attribute, null);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return WebUtility.HtmlDecode(value).Trim();
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves the image source of the first descendant image of a node.
+    /// </summary>
+    /// <param name="node">The container node.</param>
+    /// <returns>The raw source string, or <c>null</c>.</returns>
+    private static string? DescendantImageSource(HtmlNode node)
+    {
+        var img = node.SelectSingleNode(".//img");
+        return img is null ? null : FirstNonEmptyImageSource(img);
+    }
+
+    /// <summary>
+    /// Adds an image candidate unless its URL was already collected.
+    /// </summary>
+    /// <param name="candidates">Candidate list.</param>
+    /// <param name="seen">URL set used for de-duplication.</param>
+    /// <param name="url">Absolute image URL.</param>
+    /// <param name="label">Image label (title/alt), when known.</param>
+    /// <param name="starId">Star id the image belongs to, when known.</param>
+    private static void AddCandidate(
+        List<(string Url, string? Label, string? StarId)> candidates,
+        HashSet<string> seen,
+        string url,
+        string? label,
+        string? starId)
+    {
+        if (seen.Add(url))
+        {
+            candidates.Add((url, label, starId));
+        }
     }
 
     /// <summary>

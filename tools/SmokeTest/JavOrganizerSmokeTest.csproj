@@ -25,6 +25,8 @@
     <Compile Include="..\..\GenericSiteScraper.cs" Link="GenericSiteScraper.cs" />
     <Compile Include="..\..\SiteScraper.cs" Link="SiteScraper.cs" />
     <Compile Include="..\..\PerSiteRateLimiter.cs" Link="PerSiteRateLimiter.cs" />
+    <Compile Include="..\..\AdaptiveThrottle.cs" Link="AdaptiveThrottle.cs" />
+    <Compile Include="..\..\FlareSolverrUrls.cs" Link="FlareSolverrUrls.cs" />
     <Compile Include="..\..\JavMetadataProvider.cs" Link="JavMetadataProvider.cs" />
     <Compile Include="..\..\Plugin.cs" Link="Plugin.cs" />
     <Compile Include="..\..\PluginConfiguration.cs" Link="PluginConfiguration.cs" />

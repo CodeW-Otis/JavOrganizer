@@ -9,7 +9,7 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.4.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -282,10 +282,10 @@ Go to **Dashboard → Plugins → JavOrganizer** and fill in:
 
 | Field | Value |
 |---|---|
-| **FlareSolverr URL** | `http://localhost:8191/v1` (or your Docker host IP) |
+| **FlareSolverr URL** | `http://localhost:8191` or `http://localhost:8191/v1` (both work; or your Docker host IP) |
 | **FlareSolverr Executable Path** | (Windows only) The full path to `flaresolverr.exe`. Leave empty if using Docker. |
 
-Save your changes.
+Save your changes. The **FlareSolverr** panel on the same page shows a live health badge and a **Test FlareSolverr Connection** button — click it to confirm the instance answers (works for the plugin-managed local instance and for a remote/Docker one alike; a 404 on `/health` just means that build lacks the route — the solver still works).
 
 ### Step 3 — How it works
 
@@ -322,6 +322,31 @@ Available in **Dashboard → Plugins → JavOrganizer**. Settings apply immediat
 
 When configured this way, the plugin handles starting and stopping the process, and will even clean up leftover `chromedriver` instances if Jellyfin crashes.
 
+On Windows, the plugin also puts its FlareSolverr child into a **kill-on-close Job Object**, so FlareSolverr (and everything it spawned) is terminated by the operating system the moment Jellyfin exits — even when the server is force-killed (`taskkill /F`, End Task, a closed console window) or crashes, where no plugin shutdown callback runs at all. FlareSolverr therefore lives and dies with your Jellyfin server.
+
+## 🛡️ Anti-ban, anti-detect and adaptive pacing
+
+The scraping engine behaves like a fast, careful human — and proves it in the UI.
+
+### Anti-detect (browser realism)
+
+- **One coherent browser per session**: each site scraper pins a single internally-consistent profile — user agent, matching `sec-ch-ua` client hints, platform, `Accept-Language` weighting, realistic header order — for its whole lifetime, exactly like one person using one browser. A Cloudflare clearance re-pins the exact solving browser (Cloudflare validates the pairing).
+- **Realistic Referers**: search pages refer from the site root; detail pages refer from the search that led to them. A root Referer on every request is a bot tell.
+- **Staggered fan-out**: when many sites are scraped for one code, each request leaves after a short randomized offset — never a perfectly synchronized burst.
+
+### Anti-ban (polite pressure)
+
+- **Per-site pacing with human jitter**: most gaps are short, roughly one in eight is a longer "reading" pause — the request stream never looks machine-regular, at any speed.
+- **Exponential backoff with Retry-After**: 429/503 responses are retried after the site's own hint (capped at 8 s) plus jitter — far cheaper than a browser solve.
+- **Ban cooling-off**: an explicit ban page stops all requests to that site for 6 hours.
+- **Unreachable circuit breaker**: three consecutive transport failures skip a site for 30–60 minutes, so scans never waste time on a dead endpoint.
+- **Adaptive engine-wide pacing**: every pushback (429, 503, ban) raises a global pressure signal that stretches request spacing everywhere, up to 4×; pressure decays automatically (90-second half-life) and successes bleed it off, so the engine returns to full speed on its own. Scans pause briefly between items only while pressure is high.
+
+### Watch it live
+
+- The **Scan** page and the plugin settings page show the current **pacing multiplier** while a scan runs (`pacing 2.5× (easing off)`) and relax back to `1×` when sites are happy.
+- The **Site status** panel on the settings page lists every site as `active`, `banned — cooling off` or `unreachable — retrying later`, refreshing every 10 seconds.
+
 ## 🖼️ Cover art and backdrops
 
 Images are downloaded during the plugin's metadata pass and cached locally. Jellyfin then requests them via the plugin, which uses appropriate Referer headers to ensure the CDNs actually serve the images.
@@ -339,22 +364,47 @@ If you delete the cache folder or run a Deep Re-scrape, it will force fresh netw
 The plugin provides a scheduled task (**Update JavOrganizer Collections**,
 runs daily, also runnable on demand) that builds:
 
-### 🎭 Gender browse cards (one entry point per gender)
+### 🎭 Gender browse cards (nested: card → performer → videos)
 
 | Collection | What it holds |
 |---|---|
-| **Female Actresses (JavOrganizer)** | Every actress's whole filmography chained — performers ordered by **total views** across their titles, each performer's block by **release date** (newest first) |
+| **Female Actresses (JavOrganizer)** | One card per actress — ordered by **total views** across their titles — and each card opens that performer's whole filmography |
 | **Male Actors (JavOrganizer)** | The same for male actors |
 
-Open either card in the library and browse top-down: you walk performer by
-performer — most-viewed actress first, her newest title first, then the next
-performer. It's a one-click "browse everyone" entry point per gender.
+Open either card in the library and you see the **performer cards**
+(actress/actor collections, each with the performer's photo as its
+poster, most-viewed first). Open one performer card and you see exactly
+that performer's videos, newest release first. It's a one-click "browse
+everyone" entry point per gender:
+
+```
+Female Actresses (JavOrganizer)
+├── Actress: <most-viewed actress>     ← her poster is her photo
+│   └── her videos, newest first
+├── Actress: <next actress>
+│   └── …
+Male Actors (JavOrganizer)
+├── Actor: <most-viewed male actor>
+│   └── his videos, newest first
+└── …
+```
 
 ### 👤 Per-person collections
 
 - **"Actress: Name"** / **"Actor: Name"** — one collection per performer
   (when they appear in at least *Min videos per person collection*, default 2),
   ordered by release date, with the performer's photo as the poster.
+  Performer photos are collected from the sites' cast portraits
+  (JavBus star photos and similar) during scrapes and served through the
+  plugin's person image provider, so both the performer card in the
+  library and the collection poster show a real face.
+- **If no site published a portrait for a performer**, the card falls back
+  to the cover of one of their own titles rather than staying blank — so a
+  performer with videos always has an image.
+- Photos are matched to the right performer through the star id shared with
+  their credit link, the performer's name inside the portrait file name, or
+  the image's label. Records scraped before this matching existed still
+  yield their photos, so no re-scrape is needed after upgrading.
 
 ### 🏆 Rankings and groups
 
@@ -380,7 +430,7 @@ release-date, total-view and total-like browsing out of the box.
 | **Home** | Home is a landing page (libraries + Latest). Open a library or collection to sort its contents. |
 | **Movies library** | Open the library → **⋮ menu (top right) → Sort by**: Name, Community Rating, Critic Rating, Date Added, Date Played, Parental Rating, **Play Count (total views)**, **Release Date**, Runtime. Works with the ↑/↓ toggle for direction. |
 | **Collections view** | Same **⋮ → Sort by** menu. Type in the search box to jump to a card (e.g. "Female"). |
-| **Inside any collection / gender card** | The same native sort menu, plus the plugin's built-in ordering: gender cards are pre-sorted performers-by-total-views with each performer's titles newest-first. |
+| **Inside any collection / gender card** | The same native sort menu, plus the plugin's built-in ordering: gender cards list performers by total views, and each performer card holds that performer's titles newest-first. |
 | **"Total likes"** | Jellyfin has no server-side aggregate-likes sort, so the plugin provides it as content instead: the **Most Liked (JavOrganizer)** collection is your library ranked by likes/favorites across all users, and per-user favorites sort via **Filters → Favorites** anywhere. |
 ## 🧹 Automatic cache cleanup
 
@@ -438,9 +488,80 @@ The plugin tries to grab English titles if available. If it can't find one acros
 
 ## ✅ Verified on a live server
 
-We regularly test the plugin on real Jellyfin setups (e.g., v1.3.0 on Jellyfin 12.0.0). We verify that auto-scanning, scheduled tasks, FlareSolverr integration, and metadata fetching work correctly on large libraries.
+We regularly test the plugin on real Jellyfin setups (e.g., v1.4.0 on Jellyfin 12.0.0). We verify that auto-scanning, scheduled tasks, FlareSolverr integration, and metadata fetching work correctly on large libraries.
+
+The 1.4.0 collection rebuild and cover fix were verified end-to-end on a live
+Jellyfin 12.0.0 server with 1,204 scraped videos: 191 actress cards and 7
+actor cards nested under the two browse cards, 198/198 performer collections
+carrying a poster, and all three levels (card → performer → videos) browsing
+correctly.
 
 ## 📋 Changelog
+
+### 1.4.0
+
+- **Actor and actress cards now actually show their photos.** The cover fix
+  in full:
+  - Portraits are collected from *every* image a detail page embeds, not
+    just `<img title="…">` — lazy-loaded `data-src`, `srcset`, CSS
+    backgrounds, and portraits linked from the star block are all
+    harvested.
+  - Each image is matched to the right performer through the star id shared
+    with their credit link (`star/uly` ↔ `actress/uly_a.jpg`), the
+    performer's own name inside the portrait file name, or the image's
+    label.
+  - Records scraped *before* this feature existed now yield photos too: the
+    match is replayed at read time, so no re-scrape is needed.
+  - The person image provider caches its index (5-minute window) instead of
+    re-reading the whole scrape cache on every request — a library-wide
+    image refresh is no longer hundreds of full cache scans.
+  - **No card is ever blank**: a performer with no published portrait falls
+    back to a cover from one of their own titles.
+- **Nested collections rebuilt as a real Jellyfin hierarchy.**
+  *Female Actresses (JavOrganizer)* and *Male Actors (JavOrganizer)* hold
+  **one card per performer** — not loose videos — and each performer card
+  opens that performer's videos, newest first. The old flat build had left
+  907 and 744 stray videos inside the two cards; those are removed
+  automatically on the next run, along with performer collections that no
+  longer meet the minimum. (Technically: membership is written as linked
+  children, because the collection manager's add path only accepts movies
+  and silently flattened the nesting.)
+- **UI polish.** Site names are escaped before rendering; the FlareSolverr
+  check no longer fires on page load (it is what the button is for);
+  polling timers are torn down when leaving a page so navigating back and
+  forth can no longer stack intervals; and every button restores itself
+  with a toast when a request fails, instead of leaving the page stuck
+  behind a loading overlay or a button permanently disabled.
+- **Repository hygiene.** Release archives and checksums are no longer
+  committed (they are build output), and the tree carries no absolute
+  paths from a developer machine.
+
+### 1.3.2
+
+- **Performer photos** — actor and actress cards (and their collections)
+  now show real photos. Portraits are collected from the sites' cast
+  images during scrapes, cached with each record, and served through a
+  new **person image provider**, so both the performer card in the library
+  and the collection poster carry a face.
+- **Nested gender collections** — *Female Actresses (JavOrganizer)* and
+  *Male Actors (JavOrganizer)* now contain each performer's own
+  collection as a card: gender card → performer cards (poster = the
+  performer's photo, ordered by total views) → that performer's videos
+  (newest first).
+- **Adaptive human-like pacing engine** — request spacing stretches
+  politely (up to 4×) when sites push back with 429/503/bans and relaxes
+  back to full speed automatically; a live pacing indicator is shown in
+  the Scan page and plugin settings.
+- **Anti-detect upgrades** — one coherent browser profile per site
+  session (UA + client hints + platform), realistic per-page Referers,
+  staggered parallel fan-out, Retry-After-honoring backoff.
+- **Site status panel + FlareSolverr test** — the settings page shows
+  every site's live state (active / banned cooling off / unreachable) and
+  a button that verifies the FlareSolverr connection.
+- **Cross-platform FlareSolverr** — URL handling unified for Windows,
+  Linux, macOS and Docker; health checks work everywhere, and on Windows
+  a kill-on-close job object keeps the managed FlareSolverr tied to the
+  server even on force-kill.
 
 ### 1.3.1
 
