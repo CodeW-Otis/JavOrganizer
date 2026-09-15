@@ -684,6 +684,31 @@ foreach (var (pageCode, requested, expected, label) in new (string, string, bool
 Console.WriteLine("== FlareSolverr URL override (test harness seam) ==");
 Check(FlareSolverrUrls.UrlOverrideVariable.Length > 0, "the override variable is named");
 
+Console.WriteLine("== Language-retry bound (regression: endless futile re-scrapes) ==");
+// A title with no English release anywhere is re-scraped across every
+// enabled site on each scan unless the retry count is bounded and carried
+// forward across the rewrite. This is what kept one item re-scraping 10
+// sites every 6 hours forever.
+var jpTitle = "SDMF-010 妹にコスプレを着させて毎日、性欲処理をしています。";
+var firstRetry = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg" };
+Check(firstRetry.LanguageRetries == 0, "a fresh record starts with no language retries");
+
+// The counter must survive a round trip through the cache format.
+var json = System.Text.Json.JsonSerializer.Serialize(firstRetry);
+var roundTripped = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(json)!;
+Check(roundTripped.LanguageRetries == 0, "retry count serializes and deserializes");
+
+var counted = new JavVideo { Code = "SDMF-010", Title = jpTitle, LanguageRetries = 2 };
+var countedJson = System.Text.Json.JsonSerializer.Serialize(counted);
+var countedBack = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(countedJson)!;
+Check(countedBack.LanguageRetries == 2, $"retry count round-trips (got {countedBack.LanguageRetries})");
+
+// Records written before the field existed must deserialize to zero rather
+// than throwing, so old caches keep working.
+var legacyJson = """{"code":"ABC-123","title":"Legacy"}""";
+var legacy = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(legacyJson)!;
+Check(legacy.LanguageRetries == 0, "a record without the field defaults to zero");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 

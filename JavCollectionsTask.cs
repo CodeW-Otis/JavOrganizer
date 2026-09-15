@@ -647,6 +647,13 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// path; if the download fails, the remote URL is attached instead so
     /// the card still renders.
     /// </summary>
+    /// <remarks>
+    /// The download is skipped when the item already carries the image this
+    /// source would produce. Without that check every run re-fetched every
+    /// performer's portrait from the remote CDNs — minutes of pointless
+    /// traffic and repository churn on each daily pass, for bytes that are
+    /// already on disk.
+    /// </remarks>
     /// <param name="item">The collection receiving the poster.</param>
     /// <param name="ownerName">The performer the image belongs to.</param>
     /// <param name="source">Where the image comes from.</param>
@@ -656,6 +663,23 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     {
         try
         {
+            var existing = item.GetImageInfo(ImageType.Primary, 0);
+            if (existing is not null)
+            {
+                // Already showing this exact source: the file for this cache
+                // key is present, or the remote URL matches.
+                if (!string.IsNullOrWhiteSpace(existing.Path))
+                {
+                    var sameFile = existing.Path.EndsWith($"{source.CacheKey}.jpg", StringComparison.OrdinalIgnoreCase)
+                        && File.Exists(existing.Path);
+                    var sameUrl = string.Equals(existing.Path, source.Url, StringComparison.OrdinalIgnoreCase);
+                    if (sameFile || sameUrl)
+                    {
+                        return sameFile ? existing.Path : null;
+                    }
+                }
+            }
+
             var stored = await DownloadImageAsync(item, ownerName, source, ct).ConfigureAwait(false);
             if (stored is not null)
             {

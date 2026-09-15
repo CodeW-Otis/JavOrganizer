@@ -38,6 +38,14 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// </summary>
     private static readonly TimeSpan ThinRetryGrace = TimeSpan.FromHours(6);
 
+    /// <summary>
+    /// How many times a record whose title is not in the configured language
+    /// is re-scraped before the plugin accepts it. Some titles have no
+    /// English release on any site, so an unbounded retry would spend a full
+    /// multi-site scrape on them on every scan forever.
+    /// </summary>
+    private const int MaxLanguageRetries = 3;
+
     private readonly ILogger _logger;
 
     /// <summary>
@@ -418,18 +426,35 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             // re-scraped once its grace period passes, so later scans heal
             // it when sites recover or more of them are enabled. A
             // substantive record with a Japanese-only title is also retried
-            // once (when the configured language is English) so an English
-            // variant can replace it.
-            var needsEnglish = NeedsLanguageRetry(cached);
-            if ((IsSubstantive(cached) && !needsEnglish) || JavCache.IsFreshFor(normalized, ThinRetryGrace))
+            // (when the configured language is English) so an English
+            // variant can replace it — but only a bounded number of times,
+            // because some titles have no English release at all and would
+            // otherwise be re-scraped across every site forever.
+            var needsRetry = NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries;
+            if ((IsSubstantive(cached) && !needsRetry) || JavCache.IsFreshFor(normalized, ThinRetryGrace))
             {
                 _logger.LogDebug("Cache hit for '{Code}'", normalized);
                 return cached;
             }
 
-            if (needsEnglish)
+            if (needsRetry)
             {
-                _logger.LogInformation("Cached title for '{Code}' is not in the configured language; re-scraping once", normalized);
+                _logger.LogInformation(
+                    "Cached title for '{Code}' is not in the configured language; re-scraping (attempt {Attempt} of {Max})",
+                    normalized,
+                    cached.LanguageRetries + 1,
+                    MaxLanguageRetries);
+            }
+            else if (IsSubstantive(cached))
+            {
+                // Already asked the sites the maximum number of times; the
+                // Japanese title is simply the only one that exists.
+                _logger.LogDebug(
+                    "Cached title for '{Code}' has no {Language} release after {Max} attempts; keeping it",
+                    normalized,
+                    Plugin.EffectiveConfiguration.Language,
+                    MaxLanguageRetries);
+                return cached;
             }
             else
             {
@@ -448,6 +473,14 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         var result = await ScrapeAllSitesAsync(code, ct).ConfigureAwait(false);
         if (result.Video is not null)
         {
+            // Carry the language-retry count forward so the bound actually
+            // holds: the fresh record replaces the cached one, and without
+            // this it would reset to zero and be retried forever.
+            if (cached is not null)
+            {
+                result.Video.LanguageRetries = cached.LanguageRetries + (NeedsLanguageRetry(cached) ? 1 : 0);
+            }
+
             JavCache.TryWrite(normalized, result.Video, _logger);
         }
         else if (result.AnySiteReached)

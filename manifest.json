@@ -7,6 +7,14 @@
   "category": "Metadata",
   "versions": [
     {
+      "version": "1.5.1",
+      "changelog": "Two automation defects found by testing every background path end-to-end. The collections task re-downloaded every performer poster on every run: a guard that skipped the download when a collection already carried the right image was lost in the 1.4.0 rewrite, so each daily pass re-fetched all ~198 portraits from the remote CDNs - a run measured over five minutes instead of seconds. Downloads are now skipped when the item already holds the image that source would produce; repeat runs measured at 5.1 seconds with all 197 posters intact. A title with no English release was also re-scraped across every enabled site on every scan, forever: the language retry was unbounded and substantive records bypassed the freshness gate, so a Japanese-only title such as SDMF-010 cost a full multi-site scrape indefinitely for no possible gain. The retry is now capped at 3 attempts with the count carried across the cache rewrite. Verified live: startup auto-scan fires on every boot, FlareSolverr starts as a child of Jellyfin and reports healthy, all three scheduled tasks carry the expected triggers, all three manual buttons work with a working concurrency guard, and cache cleanup removed exactly one expired record, one expired marker and one orphan with no over-deletion.",
+      "targetAbi": "12.0.0.0",
+      "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.1/JavOrganizer-120-v1.5.1.0.zip",
+      "checksum": "ca91fa7ae3e92791c602004f746757a818333bed195972313fe101fc0339ca57",
+      "timestamp": "2026-09-15T00:00:00Z"
+    },
+    {
       "version": "1.5.0",
       "changelog": "New site: jav.guru (gender-labeled Actress/Actor cast plus English titles). Six defects found by an exhaustive live end-to-end test are fixed: zero-padded codes now match in result links, the search keyword and page verification (sites publish 'adn-029' for canonical 'ADN-29', so correct pages were downloaded then discarded); ban detection no longer fires on innocent JavaScript strings (jav.guru's comment widget says 'Too many requests', which had marked the site banned for six hours on every scrape); OneJAV and javquick result-link selectors now match their real markup (both previously returned nothing at all while looking healthy); a bare product code no longer outranks a real English title in the merge, and a page whose only title is the site's own name is rejected; bracketed codes with edition suffixes ('[ADN-029-MR]') are stripped from names while a different video's code in brackets is preserved. Test suite grown from 117 to 212 checks, plus a new live-network harness that reads the server's own FlareSolverr setting.",
       "targetAbi": "12.0.0.0",

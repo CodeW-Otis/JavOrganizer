@@ -9,7 +9,7 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.0-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.1-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -498,6 +498,38 @@ carrying a poster, and all three levels (card → performer → videos) browsing
 correctly.
 
 ## 📋 Changelog
+
+### 1.5.1
+
+Two automation defects found by testing every background path end-to-end.
+
+- **The collections task re-downloaded every poster on every run.** A guard
+  that skipped the download when a collection already carried the right image
+  was lost in the 1.4.0 rewrite, so each daily pass re-fetched all ~198
+  performer portraits from the remote CDNs. Measured on a live server: a run
+  took **over five minutes** instead of seconds, for bytes already on disk.
+  The download is now skipped when the item already holds the image that
+  source would produce (matched by the stored file name, or by the remote URL
+  when only a URL could be attached). Repeat runs measured at **5.1 seconds**,
+  with all 197 posters intact.
+
+- **A title with no English release was re-scraped forever.** When the
+  configured language is English, a cached record whose title is still
+  Japanese is retried so an English variant can replace it — but nothing
+  bounded that retry, and a *substantive* record was excluded from the
+  6-hour grace gate. Any title with no English release anywhere (for example
+  `SDMF-010`) therefore triggered a full multi-site scrape on every scan,
+  indefinitely, for no possible gain. The retry is now capped at **3
+  attempts**, and the count is carried across the cache rewrite — without
+  that, the counter reset each time and the bound would never have held.
+
+Verified on a live Jellyfin 12.0.0 server: startup auto-scan fires on every
+boot; FlareSolverr starts as a child of Jellyfin and reports healthy; all
+three scheduled tasks carry the expected triggers (6-hourly scan, daily
+cache clean at 04:00, daily collections at 04:30); all three manual buttons
+work and the concurrency guard refuses a second scan while one runs; and
+cache cleanup removed exactly one expired record, one expired not-found
+marker and one orphan, with no over-deletion.
 
 ### 1.5.0
 

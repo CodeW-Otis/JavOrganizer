@@ -20,7 +20,7 @@
   <PropertyGroup>
     <RootNamespace>Jellyfin.Plugin.JavOrganizer</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.JavOrganizer</AssemblyName>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

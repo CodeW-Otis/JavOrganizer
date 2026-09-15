@@ -83,6 +83,19 @@ public sealed class JavVideo
     public string? CoverUrl { get; set; }
 
     /// <summary>
+    /// Gets or sets how many times this record has been re-scraped in an
+    /// attempt to replace a title that is not in the configured language.
+    /// </summary>
+    /// <remarks>
+    /// Some titles simply have no English release — every site serves the
+    /// Japanese one. Without a bound, those records are re-scraped across
+    /// every enabled site on each scan, forever, for no possible gain. The
+    /// counter stops the retries once the sites have been asked a few times.
+    /// </remarks>
+    [JsonPropertyName("languageRetries")]
+    public int LanguageRetries { get; set; }
+
+    /// <summary>
     /// Gets or sets the scene preview (screenshot) image URLs, offered as
     /// backdrop images.
     /// </summary>
