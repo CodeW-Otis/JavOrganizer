@@ -214,14 +214,16 @@ public sealed class JavScanTrigger
             else
             {
                 // Normal pass: no provider id yet, the item is stuck with
-                // title-only data (no date and no cover), or — when the
-                // language is English — its title came back Japanese-heavy,
-                // so one refresh can upgrade it. Each condition heals
-                // automatically on the scheduled scans.
+                // title-only data (no date and no cover), a sparse scrape that
+                // never got its genres/studio/overview, or — when the language
+                // is English — its title came back Japanese-heavy, so one
+                // refresh can upgrade it. Each condition heals automatically
+                // on the scheduled scans.
                 var wantEnglish = Plugin.EffectiveConfiguration.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase);
                 pending = videos
                     .Where(v => !v.Item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _)
                         || IsTitleOnly(v.Item)
+                        || IsSparselyScraped(v.Item)
                         || (wantEnglish && IsJapaneseTitled(v.Item)))
                     .Select(v => v.Item)
                     .ToList();
@@ -318,6 +320,47 @@ public sealed class JavScanTrigger
         catch (Exception)
         {
             // Image inspection may fail for exotic items; treat as fine.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reports whether an item carries a JavOrganizer scrape that is missing
+    /// the fields a complete scrape always produces — genres, studios and the
+    /// overview block. A scrape can come back partial (a site answers with a
+    /// title and cast but nothing else), and because such an item already has
+    /// a provider id neither of the other conditions ever revisits it, so the
+    /// gaps persisted forever even though the sites still hold the data.
+    /// </summary>
+    /// <remarks>
+    /// Re-scraping these is cheap and self-limiting: the metadata provider
+    /// serves a substantive cached record without touching the network, so an
+    /// item the sites genuinely have no genres for is looked up once and then
+    /// answered from cache on every later pass.
+    /// </remarks>
+    /// <param name="item">The library item to inspect.</param>
+    /// <returns><c>true</c> when the scraped metadata is incomplete.</returns>
+    internal static bool IsSparselyScraped(BaseItem item)
+    {
+        // Items without the provider id are already pending by the first
+        // condition; this is about items that were scraped but thinly.
+        if (!item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Genres are the reliable signal: the plugin always writes the
+            // overview and a studio when a scrape provides them, but a site
+            // that only knows a title and a cast yields none of the three.
+            return item.Genres.Length == 0
+                || item.Studios.Length == 0
+                || string.IsNullOrWhiteSpace(item.Overview);
+        }
+        catch (Exception)
+        {
+            // Metadata inspection may fail for exotic items; treat as fine.
             return false;
         }
     }

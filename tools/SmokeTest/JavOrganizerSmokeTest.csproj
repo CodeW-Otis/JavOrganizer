@@ -37,6 +37,9 @@
     <Compile Include="..\..\JavDbScraper.cs" Link="JavDbScraper.cs" />
     <Compile Include="..\..\JavBusScraper.cs" Link="JavBusScraper.cs" />
     <Compile Include="..\..\MissAvScraper.cs" Link="MissAvScraper.cs" />
+    <!-- Linked for its item-completeness predicates (IsSparselyScraped),
+         which decide whether a scraped item is picked up again. -->
+    <Compile Include="..\..\JavScanTrigger.cs" Link="JavScanTrigger.cs" />
   </ItemGroup>
 
   <ItemGroup>

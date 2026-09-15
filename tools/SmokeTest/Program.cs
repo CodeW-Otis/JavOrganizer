@@ -782,6 +782,62 @@ if (manifestPath is not null)
     }
 }
 
+Console.WriteLine("== Sparse-scrape detection (regression: metadata never healed) ==");
+// An item that was scraped thinly keeps its provider id, so the "no provider
+// id" and "title-only" conditions never revisit it. Its genres, studio and
+// overview stayed empty forever even though the sites still held the data.
+// These cases pin exactly when such an item is picked up again.
+var fullyScraped = new MediaBrowser.Controller.Entities.Movies.Movie
+{
+    Name = "ABC-123 A Complete Title",
+    Overview = "Provider: JavOrganizer\nCode: ABC-123\nMaker: Studio",
+    Genres = ["Drama", "Romance"],
+    Studios = ["Studio"]
+};
+fullyScraped.ProviderIds[JavMetadataProvider.ProviderIdKey] = "abc123";
+Check(!JavScanTrigger.IsSparselyScraped(fullyScraped), "a complete scrape is not pending");
+
+var noGenres = new MediaBrowser.Controller.Entities.Movies.Movie
+{
+    Name = "ABC-123 A Title",
+    Overview = "Provider: JavOrganizer\nCode: ABC-123",
+    Genres = [],
+    Studios = ["Studio"]
+};
+noGenres.ProviderIds[JavMetadataProvider.ProviderIdKey] = "abc123";
+Check(JavScanTrigger.IsSparselyScraped(noGenres), "no genres is pending");
+
+var noStudios = new MediaBrowser.Controller.Entities.Movies.Movie
+{
+    Name = "ABC-123 A Title",
+    Overview = "Provider: JavOrganizer\nCode: ABC-123",
+    Genres = ["Drama"],
+    Studios = []
+};
+noStudios.ProviderIds[JavMetadataProvider.ProviderIdKey] = "abc123";
+Check(JavScanTrigger.IsSparselyScraped(noStudios), "no studios is pending");
+
+var noOverview = new MediaBrowser.Controller.Entities.Movies.Movie
+{
+    Name = "ABC-123 A Title",
+    Overview = string.Empty,
+    Genres = ["Drama"],
+    Studios = ["Studio"]
+};
+noOverview.ProviderIds[JavMetadataProvider.ProviderIdKey] = "abc123";
+Check(JavScanTrigger.IsSparselyScraped(noOverview), "no overview is pending");
+
+// An item the plugin never touched is handled by the "no provider id"
+// condition instead, so this check must not claim it.
+var untouched = new MediaBrowser.Controller.Entities.Movies.Movie
+{
+    Name = "ABC-123 A Title",
+    Genres = [],
+    Studios = []
+};
+Check(!JavScanTrigger.IsSparselyScraped(untouched),
+    "an item with no provider id is not reported as sparsely scraped");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
