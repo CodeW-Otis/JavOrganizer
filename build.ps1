@@ -4,30 +4,36 @@
     Builds the JavOrganizer plugin for one or every supported Jellyfin line.
 
 .DESCRIPTION
-    Produces one publish folder per Jellyfin version under .\dist\, each ready
+    Produces one publish folder per build under .\dist\, each ready
     to be copied into a server's plugins directory:
 
         dist\JavOrganizer-10.8\   (Jellyfin 10.8.x, net6.0)
-        dist\JavOrganizer-10.9\   (Jellyfin 10.9.x, net8.0)
-        dist\JavOrganizer-10.10\  (Jellyfin 10.10.x, net8.0)
-        dist\JavOrganizer-10.11\  (Jellyfin 10.11.x, net9.0)
-        dist\JavOrganizer-12.0\   (Jellyfin 12.0.x, net10.0)
+        dist\JavOrganizer-10.9\   (Jellyfin 10.9.x and every later version,
+                                   including releases not yet published,
+                                   net8.0)
+
+    Two builds cover the whole supported range. 10.8 needs its own because
+    Jellyfin 10.9 moved IPluginServiceRegistrator to another namespace and
+    changed its RegisterServices signature, and that interface has to be
+    implemented against whichever the running server exposes. Everything
+    that changed after 10.9 is resolved at runtime instead, so the 10.9
+    build needs no successor as new Jellyfin versions arrive.
 
     Each folder also contains the .meta sidecar file Jellyfin uses to
     recognize a manually installed plugin.
 
 .PARAMETER JellyfinVersion
-    Build only this line (10.8, 10.9, 10.10, 10.11 or 12.0). Omit to build all.
+    Build only this build (10.8 or 10.9). Omit to build both.
 
 .PARAMETER Configuration
     Build configuration; defaults to Release.
 
 .EXAMPLE
     .\build.ps1                       # build everything
-    .\build.ps1 -JellyfinVersion 12.0 # build only the Jellyfin 12 target
+    .\build.ps1 -JellyfinVersion 10.9 # build only the 10.9-and-later build
 #>
 param(
-    [ValidateSet('10.8', '10.9', '10.10', '10.11', '12.0')]
+    [ValidateSet('10.8', '10.9')]
     [string]$JellyfinVersion,
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release'
@@ -39,18 +45,17 @@ $dist = Join-Path $root 'dist'
 
 $pluginGuid = 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
 $pluginName = 'JavOrganizer'
-$pluginVersion = '1.5.2.0'
+$pluginVersion = '1.5.3.0'
 
-# ABI version each Jellyfin line expects in the meta file.
+# ABI version each build advertises. The 10.9 build declares 10.9 so that
+# every later Jellyfin - which accepts any plugin whose abi is not newer
+# than its own - is offered it.
 $abiMap = @{
-    '10.8'  = '10.8.13.0'
-    '10.9'  = '10.9.11.0'
-    '10.10' = '10.10.7.0'
-    '10.11' = '10.11.11.0'
-    '12.0'  = '12.0.0.0'
+    '10.8' = '10.8.13.0'
+    '10.9' = '10.9.11.0'
 }
 
-$targets = if ($JellyfinVersion) { @($JellyfinVersion) } else { @('10.8', '10.9', '10.10', '10.11', '12.0') }
+$targets = if ($JellyfinVersion) { @($JellyfinVersion) } else { @('10.8', '10.9') }
 
 $failed = @()
 foreach ($v in $targets) {

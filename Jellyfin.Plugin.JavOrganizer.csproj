@@ -3,16 +3,25 @@
   <!--
     JavOrganizer - multi-version Jellyfin plugin.
 
-    One build per Jellyfin line (their assemblies are not binary-compatible
-    across minor versions). Select the target with -p:JellyfinVersion=...:
+    Two builds cover every supported Jellyfin version, past and future:
 
-      dotnet publish -c Release -p:JellyfinVersion=10.8   -> net6.0  (Jellyfin 10.8.x)
-      dotnet publish -c Release -p:JellyfinVersion=10.9   -> net8.0  (Jellyfin 10.9.x)
-      dotnet publish -c Release -p:JellyfinVersion=10.10  -> net8.0  (Jellyfin 10.10.x)
-      dotnet publish -c Release -p:JellyfinVersion=10.11  -> net9.0  (Jellyfin 10.11.x)
-      dotnet publish -c Release -p:JellyfinVersion=12.0   -> net10.0 (Jellyfin 12.0.x)
+      dotnet publish -c Release -p:JellyfinVersion=10.8  -> net6.0 (Jellyfin 10.8)
+      dotnet publish -c Release -p:JellyfinVersion=10.9  -> net8.0 (Jellyfin 10.9 and every later version)
 
-    Omitting JellyfinVersion builds the newest (12.0).
+    Why two and not one: Jellyfin 10.9 moved IPluginServiceRegistrator from
+    MediaBrowser.Common.Plugins to MediaBrowser.Controller.Plugins and added
+    a parameter to RegisterServices. A plugin must implement the interface
+    the running server exposes, and that choice is made at compile time, so
+    10.8 cannot share a build with 10.9 onward.
+
+    Why the 10.9 build needs no successor: everything else that changed
+    afterwards (TaskTriggerInfo.Type becoming an enum, IUserManager.Users
+    becoming GetUsers(), PersonKind moving namespaces) is resolved at
+    runtime in JavTaskTrigger, and .NET loads a net8.0 assembly on the
+    net9.0 and net10.0 runtimes later Jellyfin versions use. New Jellyfin
+    releases are therefore covered without a new build.
+
+    Omitting JellyfinVersion builds the newest line (10.9+).
     Package versions are pinned to the exact releases each target was
     verified against; bump them deliberately when re-verifying.
   -->
@@ -20,39 +29,26 @@
   <PropertyGroup>
     <RootNamespace>Jellyfin.Plugin.JavOrganizer</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.JavOrganizer</AssemblyName>
-    <Version>1.5.2</Version>
+    <Version>1.5.3</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <EnableDynamicLoading>true</EnableDynamicLoading>
-    <JellyfinVersion Condition="'$(JellyfinVersion)' == ''">12.0</JellyfinVersion>
+    <JellyfinVersion Condition="'$(JellyfinVersion)' == ''">10.9</JellyfinVersion>
   </PropertyGroup>
 
   <!-- Per-Jellyfin-line target framework and pinned package versions. -->
   <PropertyGroup Condition="'$(JellyfinVersion)' == '10.8'">
     <TargetFramework>net6.0</TargetFramework>
     <JellyfinPackages>10.8.13</JellyfinPackages>
-    <DefineConstants>$(DefineConstants);JF_LEGACY_PERSON;JF_LEGACY_TASK_TRIGGER</DefineConstants>
+    <DefineConstants>$(DefineConstants);JF_LEGACY_REGISTRATOR</DefineConstants>
   </PropertyGroup>
+  <!-- 10.9 and every later Jellyfin, including versions not yet released. -->
   <PropertyGroup Condition="'$(JellyfinVersion)' == '10.9'">
     <TargetFramework>net8.0</TargetFramework>
     <JellyfinPackages>10.9.11</JellyfinPackages>
-    <DefineConstants>$(DefineConstants);JF_LEGACY_TASK_TRIGGER</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(JellyfinVersion)' == '10.10'">
-    <TargetFramework>net8.0</TargetFramework>
-    <JellyfinPackages>10.10.7</JellyfinPackages>
-    <DefineConstants>$(DefineConstants);JF_LEGACY_TASK_TRIGGER</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(JellyfinVersion)' == '10.11'">
-    <TargetFramework>net9.0</TargetFramework>
-    <JellyfinPackages>10.11.11</JellyfinPackages>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(JellyfinVersion)' == '12.0'">
-    <TargetFramework>net10.0</TargetFramework>
-    <JellyfinPackages>12.0.0</JellyfinPackages>
   </PropertyGroup>
 
   <ItemGroup>

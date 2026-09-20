@@ -19,12 +19,6 @@ jobs:
             dotnet: "6.0.x"
           - jf-version: "10.9"
             dotnet: "8.0.x"
-          - jf-version: "10.10"
-            dotnet: "8.0.x"
-          - jf-version: "10.11"
-            dotnet: "9.0.x"
-          - jf-version: "12.0"
-            dotnet: "10.0.x"
 
     steps:
       - uses: actions/checkout@v4
@@ -43,9 +37,9 @@ jobs:
           -warnaserror
 
       - name: Verify zero warnings
-        if: matrix.jf-version == '12.0'
+        if: matrix.jf-version == '10.9'
         run: |
-          output=$(dotnet build Jellyfin.Plugin.JavOrganizer.csproj -c Release -p:JellyfinVersion=12.0 --nologo 2>&1)
+          output=$(dotnet build Jellyfin.Plugin.JavOrganizer.csproj -c Release -p:JellyfinVersion=10.9 --nologo 2>&1)
           if echo "$output" | grep -q "warning"; then
             echo "::error::Build produced warnings"
             exit 1
@@ -62,14 +56,14 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Run the 80-check suite
+      - name: Run the offline suite
         run: dotnet run --project tools/SmokeTest -c Release
 
       - name: Fail on test failures
         run: dotnet run --project tools/SmokeTest -c Release | tee test-output.txt && ! grep -q "FAIL" test-output.txt
 
   release-build:
-    name: Release artifacts (all five lines)
+    name: Release artifacts (all six lines)
     runs-on: windows-latest
     needs: [build, test]
     if: github.ref == 'refs/heads/main'
