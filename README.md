@@ -9,9 +9,9 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.2-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.3-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Jellyfin 10.8–12.0](https://img.shields.io/badge/Jellyfin-10.8%20%7C%2010.9%20%7C%2010.10%20%7C%2010.11%20%7C%2012.0-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
+[![Jellyfin 10.8 and later](https://img.shields.io/badge/Jellyfin-10.8%2B-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![Stars](https://img.shields.io/github/stars/CodeW-Otis/JavOrganizer.svg?style=social)](https://github.com/CodeW-Otis/JavOrganizer/stargazers)
 
@@ -49,7 +49,7 @@ https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
   <tr>
     <td align="center">⏰ <strong>Scanning Options</strong><br>Supports startup, scheduled, and on-demand scans</td>
     <td align="center">💾 <strong>Local Cache</strong><br>Caches metadata with a 30-day TTL to save requests</td>
-    <td align="center">🔧 <strong>Jellyfin 10.8–12.0</strong><br>Version-specific builds for compatibility</td>
+    <td align="center">🔧 <strong>Jellyfin 10.8 and later</strong><br>Two builds cover every version</td>
   </tr>
 </table>
 
@@ -65,7 +65,7 @@ JavOrganizer identifies Japanese adult video files by looking for the product co
 
 To handle sites protected by Cloudflare, you can run [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr). The plugin can manage the FlareSolverr process for you, starting and stopping it along with your Jellyfin server.
 
-It supports Jellyfin 10.8 through 12.0, with a dedicated build for each version line.
+It supports Jellyfin 10.8 and every later version with just two builds: one for 10.8, and one that covers 10.9 onward including releases that have not been published yet. See [Build matrix](#build-matrix--pick-the-build-matching-your-server).
 
 > [!NOTE]
 > **Tested on a live server:** We test these features on a real Jellyfin 12.0.0 instance (Windows, 1200+ items, using FlareSolverr). This covers loading, auto-scanning, API usage, multi-site merging, and scheduled tasks. See [Verified on a live server](#verified-on-a-live-server) for details.
@@ -443,7 +443,7 @@ You'll need the .NET SDK matching your target version. Use the included script:
 
 ```powershell
 .\build.ps1                        # Build all versions
-.\build.ps1 -JellyfinVersion 12.0  # Build a specific version
+.\build.ps1 -JellyfinVersion 10.9  # Build the 10.9-and-later build
 ```
 
 To run the offline test suite:
@@ -498,6 +498,49 @@ carrying a poster, and all three levels (card → performer → videos) browsing
 correctly.
 
 ## 📋 Changelog
+
+### 1.5.3
+
+**Universal version support — two builds instead of six, and no rebuild for
+new Jellyfin releases.**
+
+Until now every Jellyfin line needed its own build: 10.8, 10.9, 10.10,
+10.11, 12.0 and 12.1 each produced a separate archive, and a new Jellyfin
+release meant adding a target before anyone on it could install anything.
+
+Now there are two builds:
+
+- **10.8** — its own build, on net6.0.
+- **10.9 and every later version** — one net8.0 build that covers 10.9, 10.10,
+  10.11, 12.0, 12.1 **and any future release**, with no rebuild needed.
+
+**Why two and not one.** Jellyfin 10.9 moved `IPluginServiceRegistrator` from
+`MediaBrowser.Common.Plugins` to `MediaBrowser.Controller.Plugins` and added
+the host parameter to `RegisterServices`. A plugin has to implement whichever
+interface the running server exposes, and that choice is made at compile time,
+so 10.8 cannot share a build with anything later. Everything else that changed
+afterwards is resolved at runtime instead:
+
+- `TaskTriggerInfo.Type` — a string through 10.10, the
+  `TaskTriggerInfoType` enum from 10.11.
+- `IUserManager.Users` — a property through 10.10, replaced by `GetUsers()`.
+- `ILibraryManager.GetItemList` and `GetPeople` — returned `List<T>` through
+  10.11 and `IReadOnlyList<T>` from 12.0. A return-type change compiles fine
+  against the old assemblies but throws `MissingMethodException` at runtime.
+- `MetadataResult.People` — same collection-type change.
+- `PersonKind` — the enum itself moved namespaces again in 12.1, so it is
+  never named directly.
+
+All of these go through `JavApiCompat`, which reads or writes the member
+through reflection and accepts whichever shape the running server has. A
+net8.0 assembly also loads on the net9.0 and net10.0 runtimes later Jellyfin
+versions use, which is what lets one build span them.
+
+**Verified on a live Jellyfin 12.1.0 server running the 10.9 build**: the
+plugin loads and registers, FlareSolverr starts alongside the server, both
+scheduled tasks arm, the startup auto-scan runs, and a metadata scrape
+completes with no `MissingMethodException`. Both builds compile with zero
+warnings and the offline suite passes.
 
 ### 1.5.2
 

@@ -7,8 +7,8 @@ assignees: ""
 ---
 
 **Environment**
-- Jellyfin version: [e.g. 10.10.7]
-- Plugin version: [e.g. 1.5.2]
+- Jellyfin version: [e.g. 12.1.0]
+- Plugin version: [e.g. 1.5.3]
 - Install method: [catalog / manual zip]
 - OS: [e.g. Windows 11 / Debian 12]
 - FlareSolverr: [managed by plugin / my own / none]
