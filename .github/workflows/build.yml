@@ -62,6 +62,12 @@ jobs:
       - name: Fail on test failures
         run: dotnet run --project tools/SmokeTest -c Release | tee test-output.txt && ! grep -q "FAIL" test-output.txt
 
+      # The LiveScrape harness links plugin sources the same way SmokeTest
+      # does, so a new source file can break it just as silently. It is built
+      # here (never run - it hits the live sites) to keep it compiling.
+      - name: Build the live-scrape harness
+        run: dotnet build tools/LiveScrape -c Release --nologo
+
   release-build:
     name: Release artifacts (all six lines)
     runs-on: windows-latest

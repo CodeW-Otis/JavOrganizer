@@ -40,6 +40,9 @@
     <!-- Linked for its item-completeness predicates (IsSparselyScraped),
          which decide whether a scraped item is picked up again. -->
     <Compile Include="..\..\JavScanTrigger.cs" Link="JavScanTrigger.cs" />
+    <!-- Linked because JavScanTrigger and JavMetadataProvider call it to
+         bridge the Jellyfin API differences between versions. -->
+    <Compile Include="..\..\JavApiCompat.cs" Link="JavApiCompat.cs" />
   </ItemGroup>
 
   <ItemGroup>

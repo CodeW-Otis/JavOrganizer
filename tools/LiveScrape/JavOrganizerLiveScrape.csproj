@@ -36,6 +36,9 @@
     <Compile Include="..\..\JavDbScraper.cs" Link="JavDbScraper.cs" />
     <Compile Include="..\..\JavBusScraper.cs" Link="JavBusScraper.cs" />
     <Compile Include="..\..\MissAvScraper.cs" Link="MissAvScraper.cs" />
+    <!-- Linked because JavMetadataProvider calls it to bridge the Jellyfin
+         API differences between versions. -->
+    <Compile Include="..\..\JavApiCompat.cs" Link="JavApiCompat.cs" />
   </ItemGroup>
 
   <ItemGroup>
