@@ -9,11 +9,51 @@
     "versions": [
       {
         "version": "1.5.3",
-        "changelog": "Universal version support: two builds now cover every Jellyfin the plugin supports, past and future. Previously each Jellyfin line needed its own build (10.8, 10.9, 10.10, 10.11, 12.0, 12.1). Now 10.8 keeps a build of its own, and a single net8.0 build covers 10.9 and every later release including ones not yet published. Jellyfin 10.9 moved IPluginServiceRegistrator to another namespace and changed RegisterServices' signature, so 10.8 cannot share a build - that interface must be implemented against whichever the running server exposes. Everything that changed after 10.9 is resolved at runtime instead: TaskTriggerInfo.Type becoming an enum, IUserManager.Users becoming GetUsers(), ILibraryManager.GetItemList and GetPeople returning IReadOnlyList instead of List, MetadataResult.People changing collection type, and PersonKind moving namespaces in 12.1. New Jellyfin releases therefore need no new build. Verified on a live Jellyfin 12.1.0 server with the 10.9 build: plugin loads and registers, FlareSolverr lifecycle runs, both scheduled tasks arm, the startup auto-scan runs, and a metadata scrape completes with no MissingMethodException.",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-121-v1.5.3.0.zip",
+        "checksum": "94a9462e6ef3261f7304d84ff1244e87e6d9f46f7b5173ca11bb51dbdeae24dc",
+        "timestamp": "2026-09-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.3",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-120-v1.5.3.0.zip",
+        "checksum": "8ed8c406336a85b735d04f5d90c743b21e30886f365486e700b00d91a0c50e60",
+        "timestamp": "2026-09-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.3",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-1011-v1.5.3.0.zip",
+        "checksum": "7c32cf8cb40f5dd5cb97014f06cb7df1645bdb59e39d9821dead41fde4e852ce",
+        "timestamp": "2026-09-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.3",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-1010-v1.5.3.0.zip",
+        "checksum": "20f7ab2860995e0909580c878c1915e1efd30c7f4dc5068fb80a477266b2ce96",
+        "timestamp": "2026-09-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.3",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
         "targetAbi": "10.9.11.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-109-v1.5.3.0.zip",
-        "checksum": "b779663bf1172cbbacc2f1f9154ff7530939258cea2b2d4e766945f62cf87800",
-        "timestamp": "2026-09-20T00:00:00Z"
+        "checksum": "094f885d31c42de956aa474cbcf69bac06a38b179bfdc534d2de6bce52e546ff",
+        "timestamp": "2026-09-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.3",
+        "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",
+        "targetAbi": "10.8.13.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.3/JavOrganizer-108-v1.5.3.0.zip",
+        "checksum": "d008fce69f3135868a7892086d98882cbf85910dc2953c6bb1b6a34a025a6238",
+        "timestamp": "2026-09-21T00:00:00Z"
       },
       {
         "version": "1.5.2",
