@@ -359,16 +359,8 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
-        yield return new TaskTriggerInfo
-        {
-#if JF_LEGACY_TASK_TRIGGER
-            Type = "DailyTrigger",
-#else
-            Type = TaskTriggerInfoType.DailyTrigger,
-#endif
-            // After the cache cleanup, so people from fresh scrapes are in.
-            TimeOfDayTicks = TimeSpan.FromHours(4).Add(TimeSpan.FromMinutes(30)).Ticks
-        };
+        // After the cache cleanup, so people from fresh scrapes are in.
+        yield return JavApiCompat.DailyTrigger(TimeSpan.FromHours(4).Add(TimeSpan.FromMinutes(30)));
     }
 
     // -----------------------------------------------------------------
@@ -391,7 +383,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
 
         foreach (var item in items)
         {
-            foreach (var person in _libraryManager.GetPeople(item))
+            foreach (var person in JavApiCompat.GetPeople(_libraryManager, item))
             {
                 if (string.IsNullOrWhiteSpace(person.Name))
                 {
@@ -458,11 +450,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// <returns>A short role label, e.g. "Actress" or "Male actor".</returns>
     private static string DescribeRole(PersonInfo person, string gender)
     {
-#if JF_LEGACY_PERSON
-        var isDirector = (person.Type as string ?? string.Empty).Equals("Director", StringComparison.OrdinalIgnoreCase);
-#else
-        var isDirector = person.Type == PersonKind.Director;
-#endif
+        var isDirector = JavApiCompat.IsDirector(person);
         if (isDirector)
         {
             return "Director";
@@ -1146,7 +1134,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             IsFolder = false
         };
 
-        var all = _libraryManager.GetItemList(query) ?? [];
+        var all = JavApiCompat.GetItemList(_libraryManager, query).ToList();
         return all
             .OfType<Movie>()
             .Where(m => m.ProviderIds.ContainsKey(JavMetadataProvider.ProviderIdKey))
@@ -1165,7 +1153,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             IncludeItemTypes = [BaseItemKind.BoxSet]
         };
 
-        return (_libraryManager.GetItemList(query) ?? []).OfType<BoxSet>().ToList();
+        return JavApiCompat.GetItemList(_libraryManager, query).OfType<BoxSet>().ToList();
     }
 
     /// <summary>
@@ -1182,15 +1170,15 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         var playCounts = new Dictionary<Guid, int>();
         var likeScores = new Dictionary<Guid, double>();
 
-#if JF_LEGACY_TASK_TRIGGER
-        var users = _userManager.Users;
-#else
-        var users = _userManager.GetUsers();
-#endif
+        var users = JavApiCompat.GetUsers(_userManager);
 
-        foreach (var user in users)
+        foreach (var raw in JavApiCompat.GetUsers(_userManager))
         {
             ct.ThrowIfCancellationRequested();
+            // Bound at runtime: the user type's name and namespace are not
+            // spelled out so the assembly stays valid on every Jellyfin
+            // version the plugin supports.
+            dynamic user = raw;
             foreach (var item in items)
             {
                 var data = _userDataManager.GetUserData(user, item);
@@ -1231,7 +1219,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             Name = name
         };
 
-        return _libraryManager.GetItemList(query)?
+        return JavApiCompat.GetItemList(_libraryManager, query)
             .OfType<BoxSet>()
             .FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
     }

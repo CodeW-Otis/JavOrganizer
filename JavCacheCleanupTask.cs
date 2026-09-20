@@ -102,7 +102,7 @@ public sealed class JavCacheCleanupTask : IScheduledTask, IConfigurableScheduled
                 IncludeItemTypes = [BaseItemKind.Video, BaseItemKind.Movie]
             };
 
-            var items = _libraryManager.GetItemList(query);
+            var items = JavApiCompat.GetItemList(_libraryManager, query).ToList();
             foreach (var item in items)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -129,14 +129,6 @@ public sealed class JavCacheCleanupTask : IScheduledTask, IConfigurableScheduled
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
         // Daily at 04:00, when library scans are unlikely to be running.
-        yield return new TaskTriggerInfo
-        {
-#if JF_LEGACY_TASK_TRIGGER
-            Type = "DailyTrigger",
-#else
-            Type = TaskTriggerInfoType.DailyTrigger,
-#endif
-            TimeOfDayTicks = TimeSpan.FromHours(4).Ticks
-        };
+        yield return JavApiCompat.DailyTrigger(TimeSpan.FromHours(4));
     }
 }

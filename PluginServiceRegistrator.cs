@@ -1,7 +1,7 @@
 using Jellyfin.Plugin.JavOrganizer;
 using MediaBrowser.Controller.Providers;
 using Microsoft.Extensions.DependencyInjection;
-#if JF_LEGACY_PERSON
+#if JF_LEGACY_REGISTRATOR
 using MediaBrowser.Common.Plugins;
 #else
 using MediaBrowser.Controller;
@@ -15,9 +15,18 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// FlareSolverr lifecycle service) with the Jellyfin dependency-injection
 /// container at startup.
 /// </summary>
+/// <remarks>
+/// This is the one place the plugin must be built per Jellyfin version.
+/// Jellyfin 10.9 moved <see cref="IPluginServiceRegistrator"/> from
+/// MediaBrowser.Common.Plugins to MediaBrowser.Controller.Plugins and added
+/// the host parameter to <see cref="IPluginServiceRegistrator.RegisterServices"/>.
+/// Because the interface has to be implemented against whichever the running
+/// server exposes, 10.8 needs its own build; 10.9 onward share one, and that
+/// single build covers every later Jellyfin release too.
+/// </remarks>
 public class PluginServiceRegistrator : IPluginServiceRegistrator
 {
-#if JF_LEGACY_PERSON
+#if JF_LEGACY_REGISTRATOR
     /// <summary>
     /// Adds the plugin's providers to the server's service collection.
     /// </summary>

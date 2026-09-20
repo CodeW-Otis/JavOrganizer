@@ -1,7 +1,4 @@
 using System.Text;
-#if !JF_LEGACY_PERSON
-using Jellyfin.Data.Enums;
-#endif
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
@@ -138,18 +135,20 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         }
 
         // People is null until the first AddPerson; treat that as "no duplicates".
-        if (result.People is not null
-            && result.People.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
+        // The property's collection type changed between Jellyfin versions,
+        // so it is read through the compatibility layer.
+        var existing = JavApiCompat.GetPeople(result);
+        if (existing.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return;
         }
 
-#if JF_LEGACY_PERSON
-        // Jellyfin 10.8: PersonInfo.Type is a plain string.
-        result.AddPerson(new PersonInfo { Name = name, Type = isActor ? "Actor" : "Director" });
-#else
-        result.AddPerson(new PersonInfo { Name = name, Type = isActor ? PersonKind.Actor : PersonKind.Director });
-#endif
+        // The person's role is stored through the property setter, whose
+        // type differs across Jellyfin versions (string on 10.8, the
+        // PersonKind enum from 10.9 on, and that enum itself moved
+        // namespaces again in 12.1). Assigning through reflection keeps one
+        // build valid on all of them.
+        result.AddPerson(JavApiCompat.PersonWithRole(name, isActor));
     }
 
     /// <summary>

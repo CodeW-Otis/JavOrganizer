@@ -173,7 +173,7 @@ public sealed class JavScanTrigger
             IncludeItemTypes = [BaseItemKind.Video, BaseItemKind.Movie]
         };
 
-        var items = _libraryManager.GetItemList(query) ?? [];
+        var items = JavApiCompat.GetItemList(_libraryManager, query).ToList();
         var result = new List<(BaseItem, string)>(items.Count);
         foreach (var item in items)
         {

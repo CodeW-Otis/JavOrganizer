@@ -79,15 +79,6 @@ public sealed class JavScanScheduledTask : IScheduledTask, IConfigurableSchedule
     {
         // Every 6 hours: newly added or previously failed videos get
         // picked up without waiting for a server restart.
-        yield return new TaskTriggerInfo
-        {
-#if JF_LEGACY_TASK_TRIGGER
-            Type = "IntervalTrigger",
-            IntervalTicks = TimeSpan.FromHours(6).Ticks
-#else
-            Type = TaskTriggerInfoType.IntervalTrigger,
-            IntervalTicks = TimeSpan.FromHours(6).Ticks
-#endif
-        };
+        yield return JavApiCompat.IntervalTrigger(TimeSpan.FromHours(6));
     }
 }
