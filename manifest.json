@@ -3,10 +3,66 @@
     "guid": "e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c",
     "name": "JavOrganizer",
     "overview": "JAV metadata and cover art from 19 websites, scraped in parallel",
-    "description": "Identifies JAV titles by product code in the file name and scrapes up to 19 websites simultaneously per code — JavLibrary, JavDB, JavBus, MissAV (+mirror), OneJAV, FANZA/DMM digital + DVD, JavLand, 123AV, SEXTB, SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube, jav.guru and MGStage — merging English titles, actresses and male actors, studio, genres, release date, runtime, cover art and scene backdrops. Advanced anti-ban system, Cloudflare bypass via optional FlareSolverr, automatic scanning, manual Scan page with live progress, gender browse collections ordered by total views, and gender-aware people collections.",
+    "description": "Identifies JAV titles by product code in the file name and scrapes up to 19 websites simultaneously per code — JavLibrary, JavDB, JavBus, MissAV (+mirror), OneJAV, FANZA/DMM digital + DVD, JavLand, 123AV, SEXTB, SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube, jav.guru and MGStage — merging English titles, actresses and male actors, studio, genres, release date, runtime, cover art and scene backdrops. Advanced anti-ban system, Cloudflare bypass via optional FlareSolverr, automatic scanning, manual scan controls with live progress on the settings page, gender browse collections ordered by total views, and gender-aware people collections.",
     "owner": "JavOrganizer contributors",
     "category": "Metadata",
     "versions": [
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-122-v1.5.4.0.zip",
+        "checksum": "8141a5e349bbd88e50904fca401e2d2e763ed5b68b7d592c12b5302e4bacfb8c",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-121-v1.5.4.0.zip",
+        "checksum": "7a29efdff188351ef655bd63633426980347136895a2570cc91de50ec8657d68",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-120-v1.5.4.0.zip",
+        "checksum": "d151665b8b239bdef0ff32033e5e7521b093c568c2f61ac2e64869046a18d434",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-1011-v1.5.4.0.zip",
+        "checksum": "aa0fdd7302a03710dfc1f9945669d0ffd778bfa48f94e1ad56234887e205ceed",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-1010-v1.5.4.0.zip",
+        "checksum": "171074dd1bba8f73f139ae1fb7ef3bd314a815cce98e3fd6d2f6f9d6614212cb",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "10.9.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-109-v1.5.4.0.zip",
+        "checksum": "0280acf5dea0a4bc65f6ce8dbf6eb6666395cc16b2a58db8106e0082eafc8318",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
+      {
+        "version": "1.5.4",
+        "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
+        "targetAbi": "10.8.13.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.4/JavOrganizer-108-v1.5.4.0.zip",
+        "checksum": "f890c0948a96b2a275382a99dcf2de7267505663ab57cd10cbe34ba9fcc06062",
+        "timestamp": "2026-10-21T00:00:00Z"
+      },
       {
         "version": "1.5.3",
         "changelog": "Universal version support. Two builds cover every supported Jellyfin version, and the newer one is forward-compatible with releases that have not been published yet.",

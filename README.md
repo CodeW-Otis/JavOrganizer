@@ -9,7 +9,7 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.3-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.4-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8 and later](https://img.shields.io/badge/Jellyfin-10.8%2B-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -499,6 +499,36 @@ correctly.
 
 ## 📋 Changelog
 
+### 1.5.4
+
+**The settings page is reachable again, and Jellyfin 12.2 is supported.**
+
+**What was wrong.** The plugin registered two configuration pages: the
+settings page and a separate Scan page. The Jellyfin 12.x web client picks
+the page that is enabled in the main menu when a plugin has more than one —
+so *Plugins → JavOrganizer → Settings* opened the **Scan** page, and the
+settings (FlareSolverr URL, language, parallel scrapes, per-site switches,
+collection options) were never shown at all. The page itself was fine; it
+simply was not the page the client linked to.
+
+**The fix.** The scan controls now live on the settings page and the plugin
+registers that one page only. The main-menu entry and the Settings button
+open the same page on every Jellyfin version, old and new.
+
+**Jellyfin 12.2** (released October 2026) joins the supported range. The
+same two builds as before still cover everything:
+
+- **10.8** — its own build, on net6.0.
+- **10.9 and every later version** — one net8.0 build that covers 10.9,
+  10.10, 10.11, 12.0, 12.1, 12.2 **and any future release**.
+
+Every member the shipped assembly binds to was compared against each
+server version's own `MediaBrowser.Controller` / `MediaBrowser.Model`
+assemblies — 72 bindings, all present with identical signatures on 10.9.11,
+10.10.7, 10.11.11, 12.0.0, 12.1.0 and 12.2.0. A compile job now runs
+against every one of those versions on each push, so a new Jellyfin release
+is caught in CI instead of on a user's server.
+
 ### 1.5.3
 
 **Universal version support — two builds instead of six, and no rebuild for
@@ -512,7 +542,7 @@ Now there are two builds:
 
 - **10.8** — its own build, on net6.0.
 - **10.9 and every later version** — one net8.0 build that covers 10.9, 10.10,
-  10.11, 12.0, 12.1 **and any future release**, with no rebuild needed.
+  10.11, 12.0, 12.1, 12.2 **and any future release**, with no rebuild needed.
 
 **Why two and not one.** Jellyfin 10.9 moved `IPluginServiceRegistrator` from
 `MediaBrowser.Common.Plugins` to `MediaBrowser.Controller.Plugins` and added
@@ -707,7 +737,7 @@ intact after the changes.
 - **Adaptive human-like pacing engine** — request spacing stretches
   politely (up to 4×) when sites push back with 429/503/bans and relaxes
   back to full speed automatically; a live pacing indicator is shown in
-  the Scan page and plugin settings.
+  the plugin settings.
 - **Anti-detect upgrades** — one coherent browser profile per site
   session (UA + client hints + platform), realistic per-page Referers,
   staggered parallel fan-out, Retry-After-honoring backoff.

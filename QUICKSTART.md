@@ -34,12 +34,13 @@ In Jellyfin: go to **Dashboard → Plugins → Repositories → ➕**, paste the
 
 | Your Jellyfin | Download |
 |---|---|
-| 10.8.x | `JavOrganizer-108-v1.5.3.0.zip` |
-| 10.9.x | `JavOrganizer-109-v1.5.3.0.zip` |
-| 10.10.x | `JavOrganizer-1010-v1.5.3.0.zip` |
-| 10.11.x | `JavOrganizer-1011-v1.5.3.0.zip` |
-| 12.0.x | `JavOrganizer-120-v1.5.3.0.zip` |
-| 12.1.x | `JavOrganizer-121-v1.5.3.0.zip` |
+| 10.8.x | `JavOrganizer-108-v1.5.4.0.zip` |
+| 10.9.x | `JavOrganizer-109-v1.5.4.0.zip` |
+| 10.10.x | `JavOrganizer-1010-v1.5.4.0.zip` |
+| 10.11.x | `JavOrganizer-1011-v1.5.4.0.zip` |
+| 12.0.x | `JavOrganizer-120-v1.5.4.0.zip` |
+| 12.1.x | `JavOrganizer-121-v1.5.4.0.zip` |
+| 12.2.x | `JavOrganizer-122-v1.5.4.0.zip` |
 
 
 Grab the correct zip from the [Releases](../../releases/latest) page, then:
@@ -47,12 +48,17 @@ Grab the correct zip from the [Releases](../../releases/latest) page, then:
 1. Extract the zip **contents** directly into `{Jellyfin data}/plugins/JavOrganizer/`
    (Windows: `%LocalAppData%\Jellyfin\plugins\JavOrganizer\` — Linux: `/var/lib/jellyfin/plugins/JavOrganizer/`).
 2. Restart Jellyfin.
-3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.5.3* is listed.
+3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.5.4* is listed.
 
 > [!CAUTION]
 > **Critical Step:** Make sure you extract the zip contents *into* the `JavOrganizer` folder, not a subfolder inside it.
 
-✅ **Success check:** JavOrganizer 1.5.3 should now show up in **Dashboard → Plugins**.
+✅ **Success check:** JavOrganizer 1.5.4 should now show up in **Dashboard → Plugins**.
+
+> [!TIP]
+> **All settings live on one page.** Open *Dashboard → Plugins → JavOrganizer → Settings*
+> (or the **JavOrganizer** entry in the main menu). The scan buttons, the live
+> site status and the FlareSolverr test are at the top of that same page.
 
 ---
 

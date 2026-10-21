@@ -52,4 +52,11 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The settings page, embedded under the exact resource name the plugin
+         gives it, so the test can inspect the page the plugin really ships. -->
+    <EmbeddedResource Include="..\..\Configuration\configPage.html"
+                      LogicalName="Jellyfin.Plugin.JavOrganizer.Configuration.configPage.html" />
+  </ItemGroup>
+
 </Project>

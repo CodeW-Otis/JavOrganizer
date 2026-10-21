@@ -8,7 +8,10 @@
     <div id="JavOrganizerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
         <div data-role="content">
             <div class="content-primary">
-                <form id="JavOrganizerConfigForm">
+                <!-- novalidate: the browser's own validation must never block
+                     the save, because a blocked submit fails silently and the
+                     server clamps every value anyway. -->
+                <form id="JavOrganizerConfigForm" novalidate>
                     <div class="inputContainer" style="margin-bottom: 1.5em;">
                         <button is="emby-button" type="button" id="ScanNowButton" class="raised button-submit block emby-button">
                             <span>Scan Library Now</span>
@@ -22,6 +25,12 @@
                         <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
                         <div class="fieldDescription" id="ScanState">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
                         <div class="fieldDescription" id="ScanCurrent" style="margin-top: 0.2em; display: none;"></div>
+                        <div class="fieldDescription" id="ScanStatus" style="margin-top: 0.2em;"></div>
+                        <div class="fieldDescription" style="margin-top: 0.6em;">
+                            <b>Scan Library Now</b> scrapes videos that are missing metadata, stuck at title-only, or still showing a Japanese title.
+                            <b>Deep Re-scrape Everything</b> purges each item's cache and re-fetches every video from the sites — use it after adding sites or upgrading.
+                            Either way the pass also runs automatically at server start, every 6 hours, and when the library discovers new files.
+                        </div>
                     </div>
                     <div class="paperList" style="padding: 0.8em 1em; margin-bottom: 1.5em;">
                         <div style="font-weight: bold; margin-bottom: 0.4em;">Site status</div>
@@ -69,7 +78,7 @@
                     </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="RequestDelayMs">Delay Between Requests (ms)</label>
-                        <input id="RequestDelayMs" name="RequestDelayMs" type="number" is="emby-input" min="0" step="100" />
+                        <input id="RequestDelayMs" name="RequestDelayMs" type="number" is="emby-input" min="0" step="1" />
                         <div class="fieldDescription">Minimum spacing between requests to the same site (randomly jittered so traffic never looks machine-regular). Default 500 ms; 0 disables.</div>
                     </div>
                     <div class="inputContainer">
@@ -249,6 +258,7 @@
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
                         </button>
+                        <div class="fieldDescription" id="ConfigStatus" style="margin-top: 0.4em;"></div>
                     </div>
                 </form>
             </div>
@@ -260,6 +270,18 @@
 
             var scanStateTimer = null;
             var siteStateTimer = null;
+
+            // The Jellyfin 12.x web client has no AMD loader, so loading a
+            // module through it throws there and takes the rest of the handler
+            // with it. That is what left the scan stuck on "Starting..." and
+            // the save without any feedback. Put the message on the page
+            // instead, which works on every client.
+            function setStatus(elementId, message, isError) {
+                var el = document.querySelector(elementId);
+                if (!el) { return; }
+                el.textContent = message;
+                el.style.color = isError ? '#e5a00d' : '#4caf50';
+            }
 
             function siteStatusText(reason, retryAt) {
                 if (reason === 'banned') {
@@ -316,6 +338,9 @@
                     if (unreachable) { parts.push(unreachable + ' unreachable'); }
                     if (disabled) { parts.push(disabled + ' disabled in settings'); }
                     summary.textContent = parts.length ? parts.join(' · ') : 'No sites enabled.';
+                }, function () {
+                    // The panel is decoration; a failed read must not raise an
+                    // unhandled rejection or wipe what is already shown.
                 });
             }
 
@@ -366,6 +391,12 @@
                     deepBtn.querySelector('span').textContent = 'Deep Re-scrape Everything';
                 }
             }
+
+            // The scan state is polled every 1.5s while a pass runs: the
+            // endpoint is a cheap in-memory read (10-60ms even during a
+            // full library pass), so a live indicator costs the server
+            // almost nothing.
+            var scanPollMs = 1500;
 
             function updateScanState() {
                 // dataType:'json' is required: without it ApiClient.ajax
@@ -435,7 +466,7 @@
                         document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
                         document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
                         if (!scanStateTimer) {
-                            scanStateTimer = setInterval(updateScanState, 3000);
+                            scanStateTimer = setInterval(updateScanState, scanPollMs);
                         }
                     } else {
                         if (scanStateTimer) {
@@ -462,17 +493,27 @@
                             el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now. Deep Re-scrape purges the cache and re-scrapes everything.';
                         }
                     }
-                }, function () {
-                    // The state endpoint is unreachable — say so.
-                    if (scanStateTimer) {
-                        clearInterval(scanStateTimer);
-                        scanStateTimer = null;
+                }, function (err) {
+                    // A failed read must never end the indicator. The scan
+                    // keeps running on the server, and the page recovers by
+                    // itself as soon as a read succeeds again. The usual cause
+                    // is a session that expired or a server restart, so say
+                    // that instead of telling the user to reload - reloading
+                    // does not help when the session is gone.
+                    if (!scanStateTimer) {
+                        scanStateTimer = setInterval(updateScanState, scanPollMs);
                     }
+
                     var el = document.querySelector('#ScanState');
-                    if (el) {
-                        el.style.color = '#e5a00d';
-                        el.textContent = 'Could not read the scan state from the server. Reload the page to try again.';
+                    if (!el) {
+                        return;
                     }
+
+                    var status = err && (err.status === 401 || err.status === 403);
+                    el.style.color = '#e5a00d';
+                    el.textContent = status
+                        ? 'Your Jellyfin session expired - sign in again to see the progress. The scan itself keeps running.'
+                        : 'Could not read the scan state from the server - still retrying.';
                 });
             }
 
@@ -490,15 +531,11 @@
                 }
 
                 ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url), dataType: 'json' }).then(function (result) {
-                    require(['toast'], function (toast) {
-                        toast(result && result.message ? result.message : 'Scan request sent.');
-                    });
+                    setStatus('#ScanStatus', result && result.message ? result.message : 'Scan request sent.', false);
                     restore();
                     updateScanState();
                 }, function () {
-                    require(['toast'], function (toast) {
-                        toast('Could not start the scan.');
-                    });
+                    setStatus('#ScanStatus', 'Could not start the scan.', true);
                     restore();
                     updateScanState();
                 });
@@ -516,15 +553,11 @@
                 }
 
                 ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel'), dataType: 'json' }).then(function (result) {
-                    require(['toast'], function (toast) {
-                        toast(result && result.message ? result.message : 'Cancel requested.');
-                    });
+                    setStatus('#ScanStatus', result && result.message ? result.message : 'Cancel requested.', false);
                     restore();
                     updateScanState();
                 }, function () {
-                    require(['toast'], function (toast) {
-                        toast('Could not cancel the scan.');
-                    });
+                    setStatus('#ScanStatus', 'Could not cancel the scan.', true);
                     restore();
                 });
             }
@@ -575,14 +608,16 @@
                         document.querySelector('#BuildYearCollections').checked = config.BuildYearCollections;
                         document.querySelector('#MinVideosPerCollection').value = config.MinVideosPerCollection || 2;
                         Dashboard.hideLoadingMsg();
-                    }, function () {
+                    }, function (err) {
                         // Never leave the page stuck behind the loading overlay
                         // when the configuration cannot be read.
                         Dashboard.hideLoadingMsg();
                         var el = document.querySelector('#ScanState');
                         if (el) {
                             el.style.color = '#e5a00d';
-                            el.textContent = 'Could not read the plugin settings from the server. Reload the page to try again.';
+                            el.textContent = (err && (err.status === 401 || err.status === 403))
+                                ? 'Your Jellyfin session expired - sign in again to see the settings.'
+                                : 'Could not read the plugin settings from the server.';
                         }
                     });
 
@@ -659,19 +694,16 @@
                         config.MinVideosPerCollection = parseInt(document.querySelector('#MinVideosPerCollection').value, 10) || 2;
                         ApiClient.updatePluginConfiguration(JavOrganizerConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
+                            setStatus('#ConfigStatus', 'Settings saved.', false);
                         }, function () {
                             // A failed save must not leave the page stuck behind
                             // the loading overlay with no explanation.
                             Dashboard.hideLoadingMsg();
-                            require(['toast'], function (toast) {
-                                toast('Could not save the JavOrganizer settings.');
-                            });
+                            setStatus('#ConfigStatus', 'Could not save the JavOrganizer settings.', true);
                         });
                     }, function () {
                         Dashboard.hideLoadingMsg();
-                        require(['toast'], function (toast) {
-                            toast('Could not read the JavOrganizer settings.');
-                        });
+                        setStatus('#ConfigStatus', 'Could not read the JavOrganizer settings.', true);
                     });
 
                     e.preventDefault();

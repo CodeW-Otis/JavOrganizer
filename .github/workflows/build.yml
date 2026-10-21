@@ -45,6 +45,64 @@ jobs:
             exit 1
           fi
 
+  compat:
+    name: Compiles against Jellyfin ${{ matrix.packages }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - jf-version: "10.8"
+            packages: "10.8.13"
+            dotnet: "6.0.x"
+            tfm: "net6.0"
+          - jf-version: "10.9"
+            packages: "10.9.11"
+            dotnet: "8.0.x"
+            tfm: "net8.0"
+          - jf-version: "10.9"
+            packages: "10.10.7"
+            dotnet: "8.0.x"
+            tfm: "net8.0"
+          - jf-version: "10.9"
+            packages: "10.11.11"
+            dotnet: "9.0.x"
+            tfm: "net9.0"
+          - jf-version: "10.9"
+            packages: "12.0.0"
+            dotnet: "10.0.x"
+            tfm: "net10.0"
+          - jf-version: "10.9"
+            packages: "12.1.0"
+            dotnet: "10.0.x"
+            tfm: "net10.0"
+          - jf-version: "10.9"
+            packages: "12.2.0"
+            dotnet: "10.0.x"
+            tfm: "net10.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ matrix.dotnet }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+
+      # Only the 10.8 and 10.9 builds are shipped; this job proves the source
+      # still fits every Jellyfin version, so a new Jellyfin release is
+      # caught here instead of on a user's server.
+      - name: Compile the source against Jellyfin ${{ matrix.packages }}
+        run: |
+          dotnet restore Jellyfin.Plugin.JavOrganizer.csproj \
+            -p:JellyfinVersion=${{ matrix.jf-version }} \
+            -p:TargetFramework=${{ matrix.tfm }} \
+            -p:JellyfinPackages=${{ matrix.packages }}
+          dotnet build Jellyfin.Plugin.JavOrganizer.csproj -c Release --no-restore \
+            -p:JellyfinVersion=${{ matrix.jf-version }} \
+            -p:TargetFramework=${{ matrix.tfm }} \
+            -p:JellyfinPackages=${{ matrix.packages }} \
+            --nologo -warnaserror
+
   test:
     name: Offline test suite
     runs-on: ubuntu-latest
@@ -69,7 +127,7 @@ jobs:
         run: dotnet build tools/LiveScrape -c Release --nologo
 
   release-build:
-    name: Release artifacts (all six lines)
+    name: Release artifacts (every version line)
     runs-on: windows-latest
     needs: [build, test]
     if: github.ref == 'refs/heads/main'

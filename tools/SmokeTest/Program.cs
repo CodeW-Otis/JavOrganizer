@@ -804,7 +804,92 @@ if (manifestPath is not null)
             Check(ordered.Count == parsed.Count, "every version string is a valid version number");
             Check(ordered.SequenceEqual(ordered.OrderByDescending(v => v)),
                 "versions are ordered newest first");
+
+            // Universal version support: the newest version must offer a
+            // build for every Jellyfin line, each with its own targetAbi, so
+            // a server on any of those lines is offered a matching build
+            // instead of being told the plugin is unavailable.
+            var newestVersion = newest.GetProperty("version").GetString() ?? string.Empty;
+            var newestAbis = versions.EnumerateArray()
+                .Where(v => (v.GetProperty("version").GetString() ?? string.Empty) == newestVersion)
+                .Select(v => v.GetProperty("targetAbi").GetString() ?? string.Empty)
+                .ToList();
+            Check(newestAbis.Distinct().Count() == newestAbis.Count,
+                "every build of the newest version carries its own targetAbi");
+            foreach (var abi in new[] { "12.2.0.0", "12.1.0.0", "12.0.0.0", "10.11.11.0", "10.10.7.0", "10.9.11.0", "10.8.13.0" })
+            {
+                Check(newestAbis.Contains(abi), $"the newest version covers Jellyfin {abi}");
+            }
         }
+    }
+}
+
+Console.WriteLine("== Plugin settings page (regression: the settings page was unreachable) ==");
+// The Jellyfin 12.x web client picks the configuration page with
+// EnableInMainMenu set when a plugin registers more than one. The plugin used
+// to register a second "Scan" page, so the Plugins -> Settings button led to
+// the scan page and the settings were never reachable. One page, and it must
+// be the one the client links to.
+var pluginInstance = (Plugin)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Plugin));
+var pluginPages = pluginInstance.GetPages().ToList();
+Check(pluginPages.Count == 1, $"the plugin registers exactly one page (got {pluginPages.Count})");
+
+var pluginPage = pluginPages.FirstOrDefault();
+if (pluginPage is not null)
+{
+    Check(pluginPage.EnableInMainMenu,
+        "the page is in the main menu, so the menu entry and the Settings button are the same page");
+
+    var pageAssembly = typeof(Plugin).Assembly;
+    var pageResource = pageAssembly.GetManifestResourceStream(pluginPage.EmbeddedResourcePath);
+    Check(pageResource is not null,
+        $"the advertised page is embedded in the assembly ('{pluginPage.EmbeddedResourcePath}')");
+
+    if (pageResource is not null)
+    {
+        using var pageReader = new StreamReader(pageResource);
+        var pageHtml = pageReader.ReadToEnd();
+
+        var controlIds = System.Text.RegularExpressions.Regex
+            .Matches(pageHtml, "id=\"([A-Za-z0-9_]+)\"")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // Every setting needs a control, otherwise it is invisible in the UI.
+        foreach (var property in typeof(PluginConfiguration).GetProperties())
+        {
+            Check(controlIds.Contains(property.Name),
+                $"setting '{property.Name}' has a control on the page");
+        }
+
+        // The scan controls live on the settings page now; they must survive.
+        foreach (var id in new[] { "ScanNowButton", "DeepScanButton", "CancelScanButton", "ScanProgressBar", "ScanState" })
+        {
+            Check(controlIds.Contains(id), $"the page still has the '{id}' control");
+        }
+
+        // The Jellyfin 12.x web client has no AMD loader: loading a module
+        // through it throws there and swallows the rest of the handler, which
+        // left the scan stuck on "Starting..." and the save without feedback.
+        Check(!System.Text.RegularExpressions.Regex.IsMatch(pageHtml, @"require\s*\(\s*\["),
+            "the page does not load modules through the AMD loader, which the 12.x client does not have");
+
+        // A browser that refuses to submit the form (a field outside its
+        // validation range) blocks the save with no visible error.
+        Check(pageHtml.Contains("novalidate", StringComparison.Ordinal),
+            "the form cannot be blocked by the browser's own validation");
+        foreach (var id in new[] { "ScanStatus", "ConfigStatus" })
+        {
+            Check(controlIds.Contains(id), $"the page has a '{id}' line for messages");
+        }
+
+        // One failed read must never end the progress indicator, and an
+        // expired session has to be named as such - "reload the page" does
+        // not help when the session is gone.
+        Check(!pageHtml.Contains("Reload the page to try again", StringComparison.Ordinal),
+            "the page never tells the user to reload, which does not fix an expired session");
+        Check(pageHtml.Contains("still retrying", StringComparison.Ordinal),
+            "a failed scan-state read keeps the indicator retrying");
     }
 }
 

@@ -224,12 +224,6 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseJavDb { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether scraping should fall back to
-    /// JavBus when the other sites have no match. Placeholder for future work.
-    /// </summary>
-    public bool UseJavBusFallback { get; set; }
-
-    /// <summary>
     /// Gets or sets how many hours a successful scrape stays fresh before
     /// the next scan re-fetches it. Default is 30 days. Zero disables expiry.
     /// </summary>
