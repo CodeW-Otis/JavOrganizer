@@ -424,13 +424,14 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             // only — the state that left items at "title only" forever) is
             // re-scraped once its grace period passes, so later scans heal
             // it when sites recover or more of them are enabled. A
-            // substantive record with a Japanese-only title is also retried
-            // (when the configured language is English) so an English
-            // variant can replace it — but only a bounded number of times,
-            // because some titles have no English release at all and would
-            // otherwise be re-scraped across every site forever.
+            // substantive record with a Japanese-only title is re-scraped
+            // right away (when the configured language is English) — the
+            // six-hour thin grace must not apply to it, or a rescan would
+            // keep serving the Japanese title and change nothing. The
+            // bounded retry counter is what stops a title with no English
+            // release from being re-scraped on every scan forever.
             var needsRetry = NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries;
-            if ((IsSubstantive(cached) && !needsRetry) || JavCache.IsFreshFor(normalized, ThinRetryGrace))
+            if (ShouldServeCached(cached, JavCache.IsFreshFor(normalized, ThinRetryGrace)))
             {
                 _logger.LogDebug("Cache hit for '{Code}'", normalized);
                 return cached;
@@ -443,17 +444,6 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
                     normalized,
                     cached.LanguageRetries + 1,
                     MaxLanguageRetries);
-            }
-            else if (IsSubstantive(cached))
-            {
-                // Already asked the sites the maximum number of times; the
-                // Japanese title is simply the only one that exists.
-                _logger.LogDebug(
-                    "Cached title for '{Code}' has no {Language} release after {Max} attempts; keeping it",
-                    normalized,
-                    Plugin.EffectiveConfiguration.Language,
-                    MaxLanguageRetries);
-                return cached;
             }
             else
             {
@@ -474,10 +464,13 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         {
             // Carry the language-retry count forward so the bound actually
             // holds: the fresh record replaces the cached one, and without
-            // this it would reset to zero and be retried forever.
+            // this it would reset to zero and be retried forever. An attempt
+            // only counts when JavLibrary was actually reached — a re-scrape
+            // while it is banned had no chance at an English title and must
+            // not spend the budget, or a ban would lock the Japanese title in.
             if (cached is not null)
             {
-                result.Video.LanguageRetries = cached.LanguageRetries + (NeedsLanguageRetry(cached) ? 1 : 0);
+                result.Video.LanguageRetries = NextLanguageRetries(cached, result.JavLibraryReached);
             }
 
             JavCache.TryWrite(normalized, result.Video, _logger);
@@ -515,9 +508,7 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// than the configured language requests (e.g. a Japanese title while
     /// the plugin language is English), meaning one re-scrape could
     /// upgrade it. Even a single CJK character qualifies — an
-    /// English-language library's titles should have none. The 6-hour
-    /// freshness gate (the same one used for thin records) throttles how
-    /// often that retry happens.
+    /// English-language library's titles should have none.
     /// </summary>
     private static bool NeedsLanguageRetry(JavVideo video)
     {
@@ -529,6 +520,45 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
         return false;
     }
+
+    /// <summary>
+    /// Decides whether a cached record may be served without touching the
+    /// network. A record whose title still needs the configured language is
+    /// always re-scraped, even when it is fresh and substantive: the user
+    /// expects a rescan to fix the title immediately, and the bounded
+    /// <see cref="MaxLanguageRetries"/> counter — not the thin-record grace
+    /// window — is what stops a title with no English release from being
+    /// retried forever. The six-hour grace applies only to thin records.
+    /// </summary>
+    /// <param name="cached">The cached record.</param>
+    /// <param name="withinThinGrace">Whether the record is still within the
+    /// thin-record grace window.</param>
+    /// <returns><c>true</c> when the cache is the final answer.</returns>
+    internal static bool ShouldServeCached(JavVideo cached, bool withinThinGrace)
+    {
+        if (NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries)
+        {
+            return false;
+        }
+
+        return IsSubstantive(cached) || withinThinGrace;
+    }
+
+    /// <summary>
+    /// Computes the language-retry count to store after a re-scrape. The
+    /// count advances only when the cached title still needs the configured
+    /// language <em>and</em> JavLibrary — the primary English-title source —
+    /// was genuinely reached this round. A re-scrape while JavLibrary is
+    /// banned or unreachable could not have produced an English title, so it
+    /// must not consume the bounded budget; otherwise a temporary ban would
+    /// exhaust the retries and permanently lock in a Japanese title that an
+    /// English release does exist for.
+    /// </summary>
+    /// <param name="cached">The previously cached record being replaced.</param>
+    /// <param name="javLibraryReached">Whether JavLibrary answered this round.</param>
+    /// <returns>The retry count to carry into the fresh record.</returns>
+    internal static int NextLanguageRetries(JavVideo cached, bool javLibraryReached)
+        => cached.LanguageRetries + (NeedsLanguageRetry(cached) && javLibraryReached ? 1 : 0);
 
     /// <summary>
     /// Counts CJK (Japanese/Chinese) characters in a string.
@@ -559,7 +589,9 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// </summary>
     /// <param name="Video">Merged record, or <c>null</c> when nothing matched.</param>
     /// <param name="AnySiteReached"><c>true</c> when at least one site answered.</param>
-    private readonly record struct ScrapeOutcome(JavVideo? Video, bool AnySiteReached);
+    /// <param name="JavLibraryReached"><c>true</c> when JavLibrary — the primary
+    /// English-title source — genuinely answered (not banned or blocked away).</param>
+    private readonly record struct ScrapeOutcome(JavVideo? Video, bool AnySiteReached, bool JavLibraryReached = false);
 
     /// <summary>
     /// Scrapes every enabled site for the code — up to the configured
@@ -610,7 +642,6 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         var tasks = selected
             .Select((s, i) => GuardAsync(
                 StaggeredScrapeAsync(s, i, code, ct),
-                s,
                 SiteNameOf(s),
                 code))
             .ToList();
@@ -621,13 +652,15 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         // (richer) sites win fields and later sites fill the gaps.
         JavVideo? merged = null;
         var anySiteReached = false;
-        foreach (var result in results)
+        var libraryReached = false;
+        for (var i = 0; i < results.Length; i++)
         {
-            merged = Merge(merged, result.Video);
-            anySiteReached |= result.AnySiteReached;
+            merged = Merge(merged, results[i].Video);
+            anySiteReached |= results[i].AnySiteReached;
+            libraryReached |= ReferenceEquals(selected[i], library) && results[i].AnySiteReached;
         }
 
-        return new ScrapeOutcome(merged, anySiteReached);
+        return new ScrapeOutcome(merged, anySiteReached, libraryReached);
     }
 
     /// <summary>
@@ -640,8 +673,8 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// <param name="index">Position in the fan-out (0-based).</param>
     /// <param name="code">Product code being scraped.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The site's record.</returns>
-    private static async Task<JavVideo?> StaggeredScrapeAsync(SiteScraper scraper, int index, string code, CancellationToken ct)
+    /// <returns>The site's record and whether the site was genuinely reached.</returns>
+    private static async Task<(JavVideo? Video, bool SiteReached)> StaggeredScrapeAsync(SiteScraper scraper, int index, string code, CancellationToken ct)
     {
         // 0–150 ms per position, bounded: at most ~2 s with a 20-site cap,
         // keeping the fan-out fast while organic.
@@ -651,7 +684,7 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             await Task.Delay(offsetMs, ct).ConfigureAwait(false);
         }
 
-        return await scraper.FindByCodeAsync(code, ct).ConfigureAwait(false);
+        return await scraper.ScrapeWithReachAsync(code, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -667,16 +700,15 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// the miss.
     /// </summary>
     /// <param name="task">The site task to await.</param>
-    /// <param name="scraper">The scraper instance, for its reached state.</param>
     /// <param name="site">Site name for logging.</param>
     /// <param name="code">Product code for logging.</param>
     /// <returns>The site's record and whether the site was genuinely reached.</returns>
-    private async Task<ScrapeOutcome> GuardAsync(Task<JavVideo?> task, SiteScraper scraper, string site, string code)
+    private async Task<ScrapeOutcome> GuardAsync(Task<(JavVideo? Video, bool SiteReached)> task, string site, string code)
     {
         try
         {
-            var video = await task.ConfigureAwait(false);
-            return new ScrapeOutcome(video, scraper.SiteWasReached);
+            var (video, reached) = await task.ConfigureAwait(false);
+            return new ScrapeOutcome(video, reached);
         }
         catch (OperationCanceledException)
         {

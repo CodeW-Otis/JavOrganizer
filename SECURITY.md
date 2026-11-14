@@ -11,8 +11,8 @@ We only provide security updates for our latest releases. If you run into a secu
 
 | Version | Status | Description |
 | :---: | :---: | :--- |
-| **1.3.x** | ✅ | **Supported:** Actively receiving security updates and fixes. |
-| **< 1.3** | ❌ | **Unsupported:** Please upgrade to the latest version. |
+| **1.5.x** | ✅ | **Supported:** Actively receiving security updates and fixes. |
+| **< 1.5** | ❌ | **Unsupported:** Please upgrade to the latest version. |
 
 ## 🚨 Reporting a Vulnerability
 

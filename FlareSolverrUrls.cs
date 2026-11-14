@@ -8,12 +8,12 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Docker and non-Windows deployments point the plugin at an externally
-/// run FlareSolverr (a container, a NAS service). Windows users can
+/// Docker deployments point the plugin at an externally run FlareSolverr
+/// (a container, a NAS service). On Windows, macOS and Linux users can
 /// additionally let the plugin manage a local executable; in that mode the
 /// <b>same</b> configured URL must be used for API calls and health
 /// checks, so there is exactly one source of truth. When the URL is empty
-/// but a Windows executable is configured, the plugin assumes the
+/// but a managed executable is configured, the plugin assumes the
 /// standard local instance on port 8191.</para>
 /// <para>
 /// This makes every FlareSolverr interaction — API posts, health polling,
@@ -63,11 +63,13 @@ internal static partial class FlareSolverrUrls
                 }
             }
 
-            // No URL configured: on Windows, a managed executable implies
-            // the standard local instance. Other platforms have no default
-            // — FlareSolverr must be configured explicitly.
+            // No URL configured: a managed executable implies the standard
+            // local instance on every platform (Windows, macOS, Linux). The
+            // hosted service launches that executable cross-platform, so the
+            // URL must resolve cross-platform too or the managed instance
+            // would start but never be used.
             var exe = Plugin.EffectiveConfiguration.FlaresolverrExecutablePath?.Trim();
-            if (OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(exe))
+            if (!string.IsNullOrWhiteSpace(exe))
             {
                 return $"http://localhost:{DefaultPort}/v1";
             }

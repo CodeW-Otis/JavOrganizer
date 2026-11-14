@@ -604,10 +604,26 @@ foreach (var html in new[]
     "Runtime error: request failed with 429 too many requests",
     "This site uses cookies. Please accept to continue.",
     "<a href=\"/banned\">Banned users list</a>",
+    "The admin has banned this user from commenting.",
+    "This member has banned nobody.",
 })
 {
     Check(!SiteScraper.IsBanPage(html), $"not a ban page: {html}");
 }
+
+Console.WriteLine("== Page classification: a Cloudflare challenge is never an IP ban ==");
+// A failed FlareSolverr solve returns the challenge page, which can carry
+// ban-like wording. It must classify as a transient challenge, not a ban —
+// otherwise a reachable site (JavLibrary, the English-title source) gets
+// locked out for six hours while it keeps serving pages.
+Check(SiteScraper.ClassifyPage("Just a moment... Your IP address has been blocked. Enable JavaScript and cookies to continue") == SiteScraper.PageKind.Challenge,
+    "a challenge carrying ban wording is a challenge, not a ban");
+Check(SiteScraper.ClassifyPage("Attention Required! | Cloudflare") == SiteScraper.PageKind.Challenge,
+    "a Cloudflare challenge page is a challenge, not a ban");
+Check(SiteScraper.ClassifyPage("Your IP address has been banned from this site.") == SiteScraper.PageKind.Ban,
+    "a genuine ban page with no challenge is a ban");
+Check(SiteScraper.ClassifyPage("<title>ADN-138 Forbidden Tantrums - JAVLibrary</title>") == SiteScraper.PageKind.Content,
+    "a normal video page is content");
 
 Console.WriteLine("== Bracket-wrapped code in titles ==");
 // Several sites head their pages with "[CODE] Title"; the built name must
@@ -734,6 +750,46 @@ Check(countedBack.LanguageRetries == 2, $"retry count round-trips (got {countedB
 var legacyJson = """{"code":"ABC-123","title":"Legacy"}""";
 var legacy = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(legacyJson)!;
 Check(legacy.LanguageRetries == 0, "a record without the field defaults to zero");
+
+// A retry only counts when JavLibrary — the English-title source — actually
+// answered. Re-scraping while it is banned must not spend the budget, or a
+// temporary ban locks in a Japanese title that an English release exists for.
+var bannedRound = new JavVideo { Code = "ADN-138", Title = jpTitle, CoverUrl = "https://x/c.jpg" };
+Check(JavMetadataProvider.NextLanguageRetries(bannedRound, javLibraryReached: false) == 0,
+    "a re-scrape while JavLibrary is banned does not consume a retry");
+Check(JavMetadataProvider.NextLanguageRetries(bannedRound, javLibraryReached: true) == 1,
+    "a re-scrape that reached JavLibrary consumes one retry");
+var nearlySpent = new JavVideo { Code = "ADN-138", Title = jpTitle, LanguageRetries = 2 };
+Check(JavMetadataProvider.NextLanguageRetries(nearlySpent, javLibraryReached: false) == 2,
+    "a ban late in the budget preserves the remaining attempts");
+Check(JavMetadataProvider.NextLanguageRetries(nearlySpent, javLibraryReached: true) == 3,
+    "a reached round late in the budget advances to the bound");
+var englishTitle = new JavVideo { Code = "ADN-115", Title = "ADN-115 An English Release", LanguageRetries = 1 };
+Check(JavMetadataProvider.NextLanguageRetries(englishTitle, javLibraryReached: true) == 1,
+    "an already-English title never consumes a retry");
+
+// A fresh, substantive Japanese record must NOT be served from cache: the
+// rescan queues it (NeedsScrape) and the provider has to actually re-scrape
+// it. Serving it within the six-hour thin-record grace made every rescan a
+// no-op and left the Japanese title in place, which is exactly the "English
+// naming still not fixed" symptom.
+var freshJapanese = new JavVideo { Code = "JUR-716", Title = jpTitle, CoverUrl = "https://x/c.jpg" };
+Check(!JavMetadataProvider.ShouldServeCached(freshJapanese, withinThinGrace: true),
+    "a fresh Japanese-titled record is re-scraped instead of served from cache");
+
+var freshEnglish = new JavVideo { Code = "JUR-716", Title = "JUR-716 An English Release", CoverUrl = "https://x/c.jpg" };
+Check(JavMetadataProvider.ShouldServeCached(freshEnglish, withinThinGrace: true),
+    "a fresh English-titled record is served from cache");
+
+var spentJapanese = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg", LanguageRetries = 3 };
+Check(JavMetadataProvider.ShouldServeCached(spentJapanese, withinThinGrace: false),
+    "a Japanese title that spent its retries is served instead of scraped forever");
+
+var thinFresh = new JavVideo { Code = "ABC-123", Title = "ABC-123", LanguageRetries = 3 };
+Check(JavMetadataProvider.ShouldServeCached(thinFresh, withinThinGrace: true),
+    "a thin record within its grace window is served");
+Check(!JavMetadataProvider.ShouldServeCached(thinFresh, withinThinGrace: false),
+    "a thin record past its grace window is re-scraped");
 
 Console.WriteLine("== Repository manifest shape (regression: Jellyfin cannot read it) ==");
 // Jellyfin deserializes a plugin repository manifest into PackageInfo[] — an
@@ -985,6 +1041,161 @@ Check(JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: true),
 Check(!JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: false),
     "a Japanese-titled item is left alone when the language is not English");
 
+Console.WriteLine("== Collections like scoring (regression: favorite overwritten by like) ==");
+// A user who favorited AND liked a video contributes 3 + 2 = 5. The two
+// signals used to be written one after the other, so the like overwrote the
+// favorite and the video scored 2 — ranking it below videos only liked.
+Check(JavCollectionsTask.LikeScore(true, true) == 5, "favorite + like sums to 5");
+Check(JavCollectionsTask.LikeScore(true, false) == 3, "favorite alone scores 3");
+Check(JavCollectionsTask.LikeScore(true, null) == 3, "favorite with unset like scores 3");
+Check(JavCollectionsTask.LikeScore(false, true) == 2, "like alone scores 2");
+Check(JavCollectionsTask.LikeScore(false, false) == 0, "neither scores 0");
+Check(JavCollectionsTask.LikeScore(false, null) == 0, "unset like scores 0");
+
+Console.WriteLine("== Scrape-round reach isolation (regression: cross-code contamination) ==");
+// Scraper instances are shared by every parallel worker. One code's
+// successful fetch must not vouch for another code's failed scrape: the
+// reached flag used to live on the instance, so a concurrent success made
+// an all-failed round report "reached" and its miss was cached as a real
+// "not found" for a week.
+var reachScraper = new ReachTestScraper(new StubLogger());
+
+reachScraper.Behavior = async ct => { await Task.Delay(30, ct); reachScraper.SimulatePageReceived(); return null; };
+var markingRound = reachScraper.ScrapeWithReachAsync("AAA-111", CancellationToken.None);
+reachScraper.Behavior = async ct => { await Task.Delay(60, ct); return null; };
+var silentRound = reachScraper.ScrapeWithReachAsync("BBB-222", CancellationToken.None);
+var concurrent = await Task.WhenAll(markingRound, silentRound);
+Check(concurrent[0].SiteReached, "the round that received a page reports reached");
+Check(!concurrent[1].SiteReached, "a concurrent round that received nothing stays unreached");
+
+// The other direction: a round that finishes BEFORE another round's success
+// must not inherit that later success when its result is read.
+reachScraper.Behavior = async ct => { await Task.Delay(30, ct); return null; };
+var earlyRound = reachScraper.ScrapeWithReachAsync("CCC-333", CancellationToken.None);
+reachScraper.Behavior = async ct => { await Task.Delay(60, ct); reachScraper.SimulatePageReceived(); return null; };
+var lateRound = reachScraper.ScrapeWithReachAsync("DDD-444", CancellationToken.None);
+var earlyResult = await earlyRound;
+var lateResult = await lateRound;
+Check(!earlyResult.SiteReached, "a round finished before another's success stays unreached");
+Check(lateResult.SiteReached, "the later round's own success is reported");
+
+// Sequential rounds on the same instance start clean.
+reachScraper.Behavior = ct => { reachScraper.SimulatePageReceived(); return Task.FromResult<JavVideo?>(null); };
+var firstSequential = await reachScraper.ScrapeWithReachAsync("EEE-555", CancellationToken.None);
+reachScraper.Behavior = ct => Task.FromResult<JavVideo?>(null);
+var secondSequential = await reachScraper.ScrapeWithReachAsync("FFF-666", CancellationToken.None);
+Check(firstSequential.SiteReached, "a reached sequential round reports reached");
+Check(!secondSequential.SiteReached, "the next sequential round starts unreached");
+
+Console.WriteLine("== Direct ban page defers to FlareSolverr (regression: English source locked out) ==");
+// A direct request returning a ban-like page used to mark a six-hour ban
+// before FlareSolverr ever tried — even though the browser can solve that
+// page. That skipped JavLibrary (the primary English-title source) for hours
+// and cached Japanese titles instead. With a solver configured the ban must
+// be deferred to it; only without a solver is a direct ban page a hard ban.
+var banOverrideVar = FlareSolverrUrls.UrlOverrideVariable;
+var savedBanOverride = Environment.GetEnvironmentVariable(banOverrideVar);
+try
+{
+    // Solver configured, pointed at a dead port so the solve fails fast and
+    // offline: the direct ban page must not lock the site out.
+    Environment.SetEnvironmentVariable(banOverrideVar, "http://127.0.0.1:1/v1");
+    var withSolver = new BanTestScraper(new StubLogger());
+    BanTestScraper.InjectBanPage(withSolver);
+    await withSolver.ScrapeWithReachAsync("BAN-001", CancellationToken.None);
+    Check(!withSolver.IsBanned, "a direct ban page with FlareSolverr configured does not lock the site out");
+
+    // No solver: the direct ban page is all there is, so it is a real ban.
+    Environment.SetEnvironmentVariable(banOverrideVar, null);
+    var noSolver = new BanTestScraper(new StubLogger());
+    BanTestScraper.InjectBanPage(noSolver);
+    await noSolver.ScrapeWithReachAsync("BAN-002", CancellationToken.None);
+    Check(noSolver.IsBanned, "a direct ban page without FlareSolverr backs off");
+}
+finally
+{
+    Environment.SetEnvironmentVariable(banOverrideVar, savedBanOverride);
+}
+
+Console.WriteLine("== Scan endpoints require an administrator (regression: any user could deep-scan) ==");
+// Starting a deep re-scrape purges cached metadata and drives the server's
+// traffic against the sites; cancelling interrupts a running pass. Both are
+// admin operations, gated by the server's RequiresElevation policy — the
+// same policy Jellyfin's own scheduled-task endpoints use.
+var controllerPath = ManifestProbe.FindRepoFile("JavOrganizerController.cs");
+Check(controllerPath is not null, "the controller source is reachable from the test run");
+if (controllerPath is not null)
+{
+    var controllerText = File.ReadAllText(controllerPath);
+    Check(controllerText.Contains("[Authorize(Policy = \"RequiresElevation\")]", StringComparison.Ordinal),
+        "the controller requires the RequiresElevation (admin) policy");
+}
+
+Console.WriteLine("== Settings page exposes every configuration field (regression: a redesign drops a setting) ==");
+// The page is hand-written HTML; a redesign can silently drop a field or its
+// save mapping. Every configuration property must have a matching control id
+// AND an assignment in the submit handler, so nothing can be lost in between.
+var pagePath = ManifestProbe.FindRepoFile(Path.Combine("Configuration", "configPage.html"));
+Check(pagePath is not null, "the configuration page is reachable from the test run");
+if (pagePath is not null)
+{
+    var pageText = File.ReadAllText(pagePath);
+    var properties = typeof(PluginConfiguration).GetProperties(
+        BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+    Check(properties.Length > 0, "the configuration type exposes properties to check");
+    foreach (var property in properties)
+    {
+        Check(pageText.Contains($"id=\"{property.Name}\"", StringComparison.Ordinal),
+            $"the page has a control for {property.Name}");
+        Check(pageText.Contains($"config.{property.Name} =", StringComparison.Ordinal),
+            $"the save handler writes {property.Name}");
+    }
+}
+
+Console.WriteLine("== Cache stores compact JSON and round-trips ==");
+// The cache is read back by machines, so indentation is pure overhead: it
+// inflates every file and the IO to write/read it. Writes must be compact,
+// must still deserialize to the same record, and must stay readable for
+// records written before the change (the reader ignores whitespace).
+var fmtSample = new JavVideo
+{
+    Code = "FMT-999",
+    VideoId = "fmt999",
+    Title = "FMT-999 A Sample Title",
+    Maker = "Sample Studio",
+    Genres = ["Drama", "Solo Work"],
+    Actresses = ["Jane Doe", "John Roe"],
+    PreviewUrls = ["https://example.com/1.jpg", "https://example.com/2.jpg"],
+    PersonImageUrls = { ["Jane Doe"] = "https://example.com/j.jpg" }
+};
+var fmtCompact = System.Text.Json.JsonSerializer.Serialize(fmtSample, new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+var fmtIndented = System.Text.Json.JsonSerializer.Serialize(fmtSample, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+var fmtCode = JavCodeParser.Normalize("FMT-999");
+JavCache.TryWrite(fmtCode, fmtSample, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+var fmtFile = Path.Combine(JavCache.CacheDir, $"{fmtCode}.json");
+var fmtOnDisk = File.ReadAllText(fmtFile);
+Check(!fmtOnDisk.Contains('\n'), "the cache file is written as a single compact line");
+Check(fmtOnDisk.Length == fmtCompact.Length, "the on-disk bytes match compact serialization");
+var fmtBack = JavCache.TryRead(fmtCode, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+Check(fmtBack is not null && fmtBack.Title == fmtSample.Title && fmtBack.Actresses.Count == 2
+    && fmtBack.PersonImageUrls["Jane Doe"] == "https://example.com/j.jpg",
+    "a compact cache record round-trips to the same data");
+Check(fmtIndented.Length > fmtCompact.Length, "indentation would have inflated the record");
+Console.WriteLine($"  info compact {fmtCompact.Length} B vs indented {fmtIndented.Length} B " +
+    $"({100.0 * (fmtIndented.Length - fmtCompact.Length) / fmtIndented.Length:F1}% smaller)");
+JavCache.Purge(fmtCode);
+
+Console.WriteLine("== Site health serializes camelCase for the settings page ==");
+// The settings page reads s.enabled / s.name / s.reason. A record serializes
+// PascalCase by default, which silently rendered every site as disabled in
+// the live status panel on a real server.
+var health = new JavScraperFactory.SiteHealth("javdb", "JavDB", true, 20, true, null, null);
+var healthJson = System.Text.Json.JsonSerializer.Serialize(health);
+Check(healthJson.Contains("\"enabled\":true") && healthJson.Contains("\"name\":\"JavDB\""),
+    "site health uses camelCase field names");
+Check(!healthJson.Contains("\"Enabled\"") && !healthJson.Contains("\"Name\""),
+    "site health does not leak PascalCase names the page cannot read");
+
 Console.WriteLine($"\n{pass} passed, {fail} failed");
 
 
@@ -1069,6 +1280,62 @@ internal static class PluginConfiguration_Probe
 }
 
 /// <summary>
+/// A scraper whose network behavior is scripted, so the reach-round
+/// isolation can be exercised without touching the network.
+/// </summary>
+internal sealed class ReachTestScraper : SiteScraper
+{
+    public ReachTestScraper(Microsoft.Extensions.Logging.ILogger logger)
+        : base(logger, "https://example.invalid/")
+    {
+    }
+
+    /// <summary>Gets or sets the scripted behavior of each scrape call.</summary>
+    public Func<CancellationToken, Task<JavVideo?>> Behavior { get; set; } = _ => Task.FromResult<JavVideo?>(null);
+
+    protected override string SiteName => "ReachTest";
+
+    public override Task<JavVideo?> FindByCodeAsync(string code, CancellationToken ct) => Behavior(ct);
+
+    /// <summary>Simulates the site answering a page load in the current round.</summary>
+    public void SimulatePageReceived() => MarkSiteReached();
+}
+
+/// <summary>
+/// A scraper that runs the real fetch flow against a scripted ban page, so
+/// the direct-ban deferral policy can be exercised without the network.
+/// </summary>
+internal sealed class BanTestScraper : SiteScraper
+{
+    public BanTestScraper(Microsoft.Extensions.Logging.ILogger logger)
+        : base(logger, "https://example.invalid/")
+    {
+    }
+
+    protected override string SiteName => "BanTest";
+
+    public override async Task<JavVideo?> FindByCodeAsync(string code, CancellationToken ct)
+    {
+        await GetHtmlAsync("/video", ct).ConfigureAwait(false);
+        return null;
+    }
+
+    /// <summary>Replaces the HTTP client with one that always answers a ban page.</summary>
+    public static void InjectBanPage(SiteScraper scraper)
+    {
+        var field = typeof(SiteScraper).GetField("_http", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(scraper, new HttpClient(new BanPageHandler()));
+    }
+
+    private sealed class BanPageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("<html><body>Your IP address has been banned from this site.</body></html>")
+            });
+    }
+}
 
 /// <summary>
 /// Locates the repository's manifest.json from the test binary's location, so
@@ -1080,12 +1347,20 @@ internal static class ManifestProbe
     /// Walks up from the executing assembly until it finds manifest.json.
     /// </summary>
     /// <returns>The absolute path, or <c>null</c> when not found.</returns>
-    internal static string? FindManifest()
+    internal static string? FindManifest() => FindRepoFile("manifest.json");
+
+    /// <summary>
+    /// Walks up from the executing assembly until it finds the named file
+    /// at the repository root.
+    /// </summary>
+    /// <param name="fileName">The repository-root file to locate.</param>
+    /// <returns>The absolute path, or <c>null</c> when not found.</returns>
+    internal static string? FindRepoFile(string fileName)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "manifest.json");
+            var candidate = Path.Combine(dir.FullName, fileName);
             if (File.Exists(candidate))
             {
                 return candidate;

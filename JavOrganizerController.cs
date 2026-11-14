@@ -12,15 +12,21 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// buttons display.
 /// </summary>
 /// <remarks>
-/// Marked <see cref="AuthorizeAttribute"/> so every endpoint requires an
-/// authenticated Jellyfin session. Without it the endpoints answered
-/// anonymous requests: anything on the network could start a deep re-scrape
-/// (driving this server's traffic against the scraping sites) or cancel a
-/// running pass. The web client's ApiClient attaches the session token to
-/// every request automatically, so the plugin's own pages are unaffected.
+/// Marked with the server's <c>RequiresElevation</c> policy so every endpoint
+/// requires an authenticated <b>administrator</b> session. Starting a deep
+/// re-scrape purges cached metadata and drives this server's traffic against
+/// the scraping sites, and cancelling interrupts a running pass — server
+/// management operations, like Jellyfin's own scheduled-task endpoints.
+/// Without the policy any authenticated user (a plain viewer account) could
+/// trigger or cancel them; before that, even anonymous requests could. The
+/// web client's ApiClient attaches the session token to every request
+/// automatically, and the configuration page is admin-only, so the plugin's
+/// own pages are unaffected. The policy name is a literal because the
+/// constant moved assemblies between Jellyfin versions; the name itself is
+/// stable from 10.8 onward.
 /// </remarks>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "RequiresElevation")]
 [Route("JavOrganizer")]
 public sealed class JavOrganizerController : ControllerBase
 {

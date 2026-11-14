@@ -30,16 +30,23 @@
 2. Build and run the offline test suite:
 
 ```powershell
-.\build.ps1                                       # builds for every Jellyfin version into dist\
+.\build.ps1                                       # Windows: builds both lines into dist\
 dotnet run --project tools/SmokeTest -c Release   # runs the offline smoke tests
 ```
+
+```bash
+./build.sh                                        # macOS / Linux: same dist\ layout
+dotnet run --project tools/SmokeTest -c Release   # runs the offline smoke tests
+```
+
+Only two builds are shipped; the 10.9 build covers every later Jellyfin
+version (API drift is resolved at runtime in `JavApiCompat`), so you do not
+need a newer SDK to target a newer server.
 
 | Jellyfin version | .NET SDK | Target framework |
 |---|---|---|
 | 10.8 | SDK 6 | net6.0 |
-| 10.9 / 10.10 | SDK 8 | net8.0 |
-| 10.11 | SDK 9 | net9.0 |
-| 12.0 | SDK 10 | net10.0 |
+| 10.9 and every later version | SDK 8 | net8.0 |
 
 ## ⚡ Adding a site
 
@@ -49,7 +56,7 @@ Most sites can be added without writing any custom scraper logic.
 1. **Define the Site**: Add a new `SiteDefinition` to `JavSiteCatalog.cs`.
 2. **Add Toggle**: Add a `UseMySite` property to `PluginConfiguration.cs` (set it to true by default in the constructor).
 3. **Wire Toggle**: Check your toggle in `JavSiteCatalog.IsEnabled`.
-4. **Update UI**: Add the toggle checkbox to `Configuration/configPage.html`.
+4. **Update UI**: Add the toggle switch to `Configuration/configPage.html`.
 5. **Add Test**: Add a test case to `tools/SmokeTest/Program.cs` with a snippet of the site's HTML.
 
 <details>
@@ -88,14 +95,14 @@ new SiteDefinition
 > Please double-check that you aren't committing any personal info or API keys!
 
 - `dotnet run --project tools/SmokeTest -c Release` should pass with **0 failures**.
-- `.\build.ps1` should run cleanly with **0 warnings and 0 errors** across all targets.
+- `.\build.ps1` (Windows) or `./build.sh` (macOS/Linux) should run cleanly with **0 warnings and 0 errors** across both targets.
 - If you're updating a scraper, it helps to test against a live server if you can.
 
 ## ✅ Pull request checklist
 
 > **Quick checklist before you open a PR:**
 > 
-> - [ ] `.\build.ps1` runs without warnings
+> - [ ] `build.ps1` / `build.sh` runs without warnings
 > - [ ] `tools/SmokeTest` passes
 > - [ ] New sites have a config toggle, config UI checkbox, and test
 > - [ ] `README.md` is updated (if you added or changed a site)

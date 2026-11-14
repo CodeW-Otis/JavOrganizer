@@ -232,6 +232,18 @@ public sealed class JavScanTrigger
                     .Select(v => v.Item)
                     .ToList();
 
+                if (wantEnglish)
+                {
+                    // Fix the visible problem first: a library backlog can hold
+                    // hundreds of never-scraped items, and in library order the
+                    // Japanese-titled ones that a rescan is meant to fix would
+                    // wait behind all of them. Stable sort keeps the rest in
+                    // library order.
+                    pending = pending
+                        .OrderByDescending(IsJapaneseTitled)
+                        .ToList();
+                }
+
                 _logger.LogInformation(
                     "JavOrganizer scan: {Total} videos in the library, {Pending} need JavOrganizer metadata",
                     videos.Count,
@@ -273,7 +285,7 @@ public sealed class JavScanTrigger
                 ForceSave = false
             };
 
-            var maxConcurrent = Math.Max(1, Plugin.EffectiveConfiguration.MaxConcurrentScrapes);
+            var maxConcurrent = Math.Clamp(Plugin.EffectiveConfiguration.MaxConcurrentScrapes, 1, 32);
             _logger.LogInformation(
                 "JavOrganizer {Mode}scan running with {Workers} parallel workers, up to {Sites} sites per code",
                 deep ? "deep" : "normal",

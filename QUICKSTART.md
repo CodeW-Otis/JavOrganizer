@@ -34,26 +34,31 @@ In Jellyfin: go to **Dashboard → Plugins → Repositories → ➕**, paste the
 
 | Your Jellyfin | Download |
 |---|---|
-| 10.8.x | `JavOrganizer-108-v1.5.4.0.zip` |
-| 10.9.x | `JavOrganizer-109-v1.5.4.0.zip` |
-| 10.10.x | `JavOrganizer-1010-v1.5.4.0.zip` |
-| 10.11.x | `JavOrganizer-1011-v1.5.4.0.zip` |
-| 12.0.x | `JavOrganizer-120-v1.5.4.0.zip` |
-| 12.1.x | `JavOrganizer-121-v1.5.4.0.zip` |
-| 12.2.x | `JavOrganizer-122-v1.5.4.0.zip` |
+| 10.8.x | `JavOrganizer-108-v1.5.5.0.zip` |
+| 10.9.x | `JavOrganizer-109-v1.5.5.0.zip` |
+| 10.10.x | `JavOrganizer-1010-v1.5.5.0.zip` |
+| 10.11.x | `JavOrganizer-1011-v1.5.5.0.zip` |
+| 12.0.x | `JavOrganizer-120-v1.5.5.0.zip` |
+| 12.1.x | `JavOrganizer-121-v1.5.5.0.zip` |
+| 12.2.x | `JavOrganizer-122-v1.5.5.0.zip` |
+| 12.3.x | `JavOrganizer-123-v1.5.5.0.zip` |
+| 12.4.x | `JavOrganizer-124-v1.5.5.0.zip` |
+| Anything later | the newest zip (the 10.9+ build is forward-compatible) |
 
 
 Grab the correct zip from the [Releases](../../releases/latest) page, then:
 
-1. Extract the zip **contents** directly into `{Jellyfin data}/plugins/JavOrganizer/`
-   (Windows: `%LocalAppData%\Jellyfin\plugins\JavOrganizer\` — Linux: `/var/lib/jellyfin/plugins/JavOrganizer/`).
+1. Extract the zip **contents** directly into your server's data directory:
+   - **Windows**: `%ProgramData%\Jellyfin\Server\plugins\JavOrganizer\` (or `<datadir>\plugins\JavOrganizer\` if started with a custom `--datadir`, e.g. `%LocalAppData%\Jellyfin`)
+   - **macOS**: `~/.local/share/jellyfin/plugins/JavOrganizer/`
+   - **Linux**: `/var/lib/jellyfin/plugins/JavOrganizer/`
 2. Restart Jellyfin.
-3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.5.4* is listed.
+3. Verify in **Dashboard → Plugins**: *JavOrganizer 1.5.5* is listed.
 
 > [!CAUTION]
 > **Critical Step:** Make sure you extract the zip contents *into* the `JavOrganizer` folder, not a subfolder inside it.
 
-✅ **Success check:** JavOrganizer 1.5.4 should now show up in **Dashboard → Plugins**.
+✅ **Success check:** JavOrganizer 1.5.5 should now show up in **Dashboard → Plugins**.
 
 > [!TIP]
 > **All settings live on one page.** Open *Dashboard → Plugins → JavOrganizer → Settings*
@@ -80,21 +85,25 @@ Grab the correct zip from the [Releases](../../releases/latest) page, then:
 
 Several metadata sources sit behind Cloudflare. Without a bypass, they will be skipped, which might result in missing data.
 
-> **FlareSolverr is a separate program — it is NOT included in the plugin zip.** For full step-by-step install instructions, see the **[FlareSolverr install guide](README.md#️-flaresolverr--what-it-is-and-how-to-install-it-step-by-step)** in the main README.
+> **FlareSolverr is a separate program — it is NOT included in the plugin zip.** For full step-by-step install instructions, see the **[FlareSolverr setup guide](README.md#️-setting-up-flaresolverr)** in the main README.
 
 **Short version:**
 
-1. Install [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr):
-   - **Windows**: download `flaresolverr_windows_x64.zip` from its [releases page](https://github.com/FlareSolverr/FlareSolverr/releases), extract to somewhere like `C:\Users\<you>\AppData\Local\FlareSolverr\`. Do **not** run it manually; the plugin can manage it.
-   - **Docker**: `docker run -d --name flaresolverr -p 8191:8191 --restart unless-stopped ghcr.io/flaresolverr/flaresolverr:latest`
-2. Configure in **Dashboard → Plugins → JavOrganizer**:
-   - **FlareSolverr URL**: `http://localhost:8191/v1`
-   - **FlareSolverr Executable Path**: the full path to `flaresolverr.exe` (leave empty if using Docker). The plugin will start and stop it alongside Jellyfin.
+1. Install [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr/releases):
+   - **Windows**: download `flaresolverr_windows_x64.zip`, extract it somewhere permanent (e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\`). Do **not** start it; the plugin can manage it.
+   - **Linux**: download `flaresolverr_linux_x64.tar.gz`, extract it (e.g. `~/flaresolverr`), then `chmod +x ~/flaresolverr/flaresolverr`. Do **not** start it; the plugin can manage it.
+   - **macOS**: there is no native macOS build — use **Docker** (below), or build from source, `chmod +x` the binary and let the plugin manage it.
+   - **Docker** (any OS, recommended on macOS): `docker run -d --name flaresolverr -p 8191:8191 --restart unless-stopped ghcr.io/flaresolverr/flaresolverr:latest`
+
+2. Open **Dashboard → Plugins → JavOrganizer → FlareSolverr** and pick **one** mode:
+   - **Managed** — set **FlareSolverr Executable Path** to the binary (`…\flaresolverr.exe` on Windows, `…/flaresolverr` on Linux/macOS). The URL may stay empty; the plugin then uses `http://localhost:8191/v1` and starts/stops the process with Jellyfin.
+   - **External / Docker** — leave the executable path empty and set **FlareSolverr URL** to `http://localhost:8191` or `http://localhost:8191/v1`. If Jellyfin is in a container, use the host IP or `host.docker.internal` instead of `localhost`.
+   - Save, then click **Test FlareSolverr Connection** in the same panel.
 
 > [!TIP]
-> If you're on Windows, setting the executable path lets JavOrganizer manage FlareSolverr for you.
+> Both URL forms are accepted; the plugin normalizes them to exactly one `/v1`. A `404` on the health check only means that FlareSolverr build lacks `/health` — the solver still works.
 
-✅ **Success check:** Jellyfin logs shouldn't show FlareSolverr connection errors during a scan.
+✅ **Success check:** the FlareSolverr panel shows a green health badge and the test succeeds; during a scan the log shows `FlareSolverr fetched … and granted direct access`.
 
 ---
 

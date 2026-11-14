@@ -57,7 +57,8 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets how many videos are scraped in parallel during scans.
     /// Higher values fill the library faster but hit the sites harder;
-    /// 4 is a polite default. Zero falls back to sequential scraping.
+    /// 4 is a polite default. Values are clamped to 1–32; zero falls back
+    /// to sequential scraping.
     /// </summary>
     public int MaxConcurrentScrapes { get; set; }
 

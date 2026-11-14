@@ -825,9 +825,12 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
 
         await ClearNestedLinksAsync(collection, ct).ConfigureAwait(false);
 
-        var current = collection.GetLinkedChildren().Select(c => c.Id).ToList();
+        // Set-based diff: the All Videos collection holds the whole library,
+        // and list-contains checks there are quadratic in the library size.
+        var current = collection.GetLinkedChildren().Select(c => c.Id).ToHashSet();
+        var wantedSet = ids.ToHashSet();
         var wanted = ids.Where(id => !current.Contains(id)).ToList();
-        var removal = current.Where(id => !ids.Contains(id)).ToList();
+        var removal = current.Where(id => !wantedSet.Contains(id)).ToList();
 
         if (removal.Count > 0)
         {
@@ -1170,8 +1173,6 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         var playCounts = new Dictionary<Guid, int>();
         var likeScores = new Dictionary<Guid, double>();
 
-        var users = JavApiCompat.GetUsers(_userManager);
-
         foreach (var raw in JavApiCompat.GetUsers(_userManager))
         {
             ct.ThrowIfCancellationRequested();
@@ -1190,20 +1191,41 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                 playCounts.TryGetValue(item.Id, out var plays);
                 playCounts[item.Id] = plays + data.PlayCount;
 
-                likeScores.TryGetValue(item.Id, out var score);
-                if (data.IsFavorite)
+                var add = LikeScore(data.IsFavorite, data.Likes);
+                if (add > 0)
                 {
-                    likeScores[item.Id] = score + 3;
-                }
-
-                if (data.Likes == true)
-                {
-                    likeScores[item.Id] = score + 2;
+                    likeScores.TryGetValue(item.Id, out var score);
+                    likeScores[item.Id] = score + add;
                 }
             }
         }
 
         return Task.FromResult((playCounts, likeScores));
+    }
+
+    /// <summary>
+    /// Scores one user's affinity for a video: a favorite counts 3, a like
+    /// counts 2, and a user who did both contributes the sum. The two
+    /// signals must be added together before writing — writing them one
+    /// after the other let the like overwrite the favorite.
+    /// </summary>
+    /// <param name="isFavorite">Whether the user favorited the video.</param>
+    /// <param name="likes">The user's like state, when set.</param>
+    /// <returns>The combined score (0, 2, 3 or 5).</returns>
+    internal static int LikeScore(bool isFavorite, bool? likes)
+    {
+        var score = 0;
+        if (isFavorite)
+        {
+            score += 3;
+        }
+
+        if (likes == true)
+        {
+            score += 2;
+        }
+
+        return score;
     }
 
     /// <summary>

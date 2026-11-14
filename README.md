@@ -9,10 +9,10 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.4-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.5-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8 and later](https://img.shields.io/badge/Jellyfin-10.8%2B-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
-[![.NET 6–10](https://img.shields.io/badge/.NET-6%20%7C%208%20%7C%209%20%7C%2010-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
+[![.NET 6 | 8](https://img.shields.io/badge/.NET-6%20%7C%208-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![Stars](https://img.shields.io/github/stars/CodeW-Otis/JavOrganizer.svg?style=social)](https://github.com/CodeW-Otis/JavOrganizer/stargazers)
 
 <br>
@@ -68,7 +68,7 @@ To handle sites protected by Cloudflare, you can run [FlareSolverr](https://gith
 It supports Jellyfin 10.8 and every later version with just two builds: one for 10.8, and one that covers 10.9 onward including releases that have not been published yet. See [Build matrix](#build-matrix--pick-the-build-matching-your-server).
 
 > [!NOTE]
-> **Tested on a live server:** We test these features on a real Jellyfin 12.0.0 instance (Windows, 1200+ items, using FlareSolverr). This covers loading, auto-scanning, API usage, multi-site merging, and scheduled tasks. See [Verified on a live server](#verified-on-a-live-server) for details.
+> **Tested on a live server:** We test these features on a real Jellyfin 12.1.0 instance (Windows, 1200+ items, using FlareSolverr). This covers loading, auto-scanning, API usage, multi-site merging, and scheduled tasks. See [Verified on a live server](#verified-on-a-live-server) for details.
 
 ---
 
@@ -135,7 +135,7 @@ filename ──► JavCodeParser.ExtractCode ──► "ABP-123"
                                                │
              ┌────────────┬────────────┬──────┴─────┬──────────────┐
              ▼            ▼            ▼            ▼              ▼
-        JavLibrary     JavDB        JavBus    MissAV family   15 catalog sites
+        JavLibrary     JavDB        JavBus    MissAV family   14 catalog sites
         (baseline)   (genders)   (fast, direct) (genders)   (OneJAV, FANZA ×2,
                                                JavLand, 123AV, SEXTB, SupJav,
                                                JavGG, JavSeen, JavMix, JavQuick,
@@ -150,7 +150,7 @@ filename ──► JavCodeParser.ExtractCode ──► "ABP-123"
                 Studio, Genres, Cast, Cover and Backdrops
 ```
 
-## 🌐 The 18 sites
+## 🌐 The 19 sites
 
 When scanning a video, the plugin queries multiple enabled sites concurrently. The **Max Sites Scraped at Once** setting limits how many requests happen at once. If a site is down or blocks the request, it skips it and tries the next one on the list.
 
@@ -240,33 +240,81 @@ https://raw.githubusercontent.com/CodeW-Otis/JavOrganizer/main/manifest.json
 Download the zip for your Jellyfin version from the [Releases page](https://github.com/CodeW-Otis/JavOrganizer/releases/latest).
 
 1. Extract the contents into your Jellyfin plugins folder:
-   - **Windows**: `C:\ProgramData\Jellyfin\Server\plugins\JavOrganizer\`
-   - **Linux**: `/var/lib/jellyfin/plugins/JavOrganizer/`
+   - **Windows**: `C:\ProgramData\Jellyfin\Server\plugins\JavOrganizer\` by default. If the server was started with a custom `--datadir` (for example `%LocalAppData%\Jellyfin`), use `<that datadir>\plugins\JavOrganizer\`.
+   - **macOS**: `~/.local/share/jellyfin/plugins/JavOrganizer/` (or the server's configured data directory)
+   - **Linux**: `/var/lib/jellyfin/plugins/JavOrganizer/` (or the server's configured data directory)
    - **Docker**: Mount into `/config/plugins/JavOrganizer/`
 2. Ensure the folder contains the DLLs and `.json` files.
 3. Restart Jellyfin.
+
+### Build matrix — pick the build matching your server
+
+Only two builds exist; every release ships one zip per Jellyfin version line,
+each carrying that line's `targetAbi`. A server accepts a plugin whose
+`targetAbi` is not newer than itself, so the newest build is offered to every
+line from 10.9 up — including releases that have not come out yet.
+
+| Your Jellyfin | Zip to download | Build inside |
+|---|---|---|
+| 10.8.x | `JavOrganizer-108-v<version>.zip` | net6.0 |
+| 10.9.x | `JavOrganizer-109-v<version>.zip` | net8.0 |
+| 10.10.x | `JavOrganizer-1010-v<version>.zip` | net8.0 |
+| 10.11.x | `JavOrganizer-1011-v<version>.zip` | net8.0 |
+| 12.0.x | `JavOrganizer-120-v<version>.zip` | net8.0 |
+| 12.1.x | `JavOrganizer-121-v<version>.zip` | net8.0 |
+| 12.2.x | `JavOrganizer-122-v<version>.zip` | net8.0 |
+| 12.3.x | `JavOrganizer-123-v<version>.zip` | net8.0 |
+| 12.4.x | `JavOrganizer-124-v<version>.zip` | net8.0 |
+| Anything later | the newest zip | net8.0 (forward-compatible) |
 
 > ☁️ **Next up: [Setting up FlareSolverr](#️-setting-up-flaresolverr)**. It's optional but highly recommended to access sites behind Cloudflare.
 
 ---
 
+## 💻 Platform support
+
+| Platform | Role | Support |
+|---|---|---|
+| **Windows** | Jellyfin server | Full, incl. managed FlareSolverr + kill-on-close Job Object |
+| **macOS** | Jellyfin server | Full, incl. managed FlareSolverr (software process-tree kill) |
+| **Linux** | Jellyfin server | Full, incl. managed FlareSolverr (software process-tree kill); Docker also supported |
+| **iOS / iPadOS** | Jellyfin client | The settings page is plain web UI and runs in the Jellyfin app's web view / Safari (WebKit). The server itself does not run on iOS. |
+| **Android** | Jellyfin client | The same web settings UI in the Jellyfin app / Chrome. |
+
+The plugin ships two builds (net6.0 for Jellyfin 10.8, net8.0 for 10.9+); both are
+platform-neutral and run anywhere the matching Jellyfin server runs. The settings
+page uses only native HTML controls and `-webkit-`-prefixed glass effects, so it
+renders on Blink (Chrome/Edge), WebKit (Safari/iOS) and Gecko (Firefox) alike, in
+light and dark.
+
 ## ☁️ Setting up FlareSolverr
 
-> **Note:** FlareSolverr is a separate tool and is not included in the plugin. You don't strictly need it, but without it, you might miss out on metadata from sites like JavLibrary and JavDB.
+> **Note:** FlareSolverr is a separate program and is **not** bundled with the plugin. It is optional, but several sources — JavLibrary, JavDB, OneJAV and MissAV — sit behind Cloudflare. Without a solver those sites are skipped, so covers, cast and English titles can be incomplete.
 
 ### What it is
 
-FlareSolverr runs a headless browser to solve Cloudflare challenges. When the plugin hits a roadblock, it asks FlareSolverr to solve it, and then reuses the clearance cookie for future requests.
+FlareSolverr runs a headless browser, solves the Cloudflare challenge once, and returns the clearance cookie. The plugin reuses that cookie for later requests. You can either run FlareSolverr yourself (Docker, NAS, another machine) and point the plugin at it, or let the plugin start and stop a local executable alongside Jellyfin.
 
-### Step 1 — Install FlareSolverr
+### Step 1 — Get FlareSolverr
 
-**Windows (Standalone):**
+**Windows (standalone):**
 
-1. Download the latest `flaresolverr_windows_x64.zip` from [their releases](https://github.com/FlareSolverr/FlareSolverr/releases).
-2. Extract it somewhere (e.g., `C:\Users\<you>\AppData\Local\FlareSolverr\`).
-3. **Don't run it.** The plugin can start it for you.
+1. Download `flaresolverr_windows_x64.zip` from the [FlareSolverr releases page](https://github.com/FlareSolverr/FlareSolverr/releases).
+2. Extract it somewhere permanent (e.g. `C:\Users\<you>\AppData\Local\FlareSolverr\`).
+3. **Don't start it.** The plugin can manage it (Step 2).
 
-**Docker:**
+**Linux (standalone):**
+
+1. Download `flaresolverr_linux_x64.tar.gz` from the same releases page.
+2. Extract it (e.g. `tar -xzf flaresolverr_linux_x64.tar.gz -C ~/flaresolverr`).
+3. Make it executable: `chmod +x ~/flaresolverr/flaresolverr`.
+4. **Don't start it.** The plugin can manage it (Step 2).
+
+**macOS:**
+
+FlareSolverr publishes no native macOS build. Use **Docker** (recommended), or build it from source, `chmod +x` the resulting binary, and let the plugin manage that binary.
+
+**Docker (any OS):**
 
 ```bash
 docker run -d \
@@ -277,23 +325,42 @@ docker run -d \
   ghcr.io/flaresolverr/flaresolverr:latest
 ```
 
+> [!TIP]
+> If Jellyfin itself runs in a container, `localhost` inside that container is not your host. Publish port 8191 and use the host's LAN IP (or `host.docker.internal` on Docker Desktop) as the plugin's **FlareSolverr URL**.
+
 ### Step 2 — Configure the plugin
 
-Go to **Dashboard → Plugins → JavOrganizer** and fill in:
+Open **Dashboard → Plugins → JavOrganizer** and use the **FlareSolverr** section:
 
-| Field | Value |
+| Field | What to enter |
 |---|---|
-| **FlareSolverr URL** | `http://localhost:8191` or `http://localhost:8191/v1` (both work; or your Docker host IP) |
-| **FlareSolverr Executable Path** | (Windows only) The full path to `flaresolverr.exe`. Leave empty if using Docker. |
+| **FlareSolverr URL** | `http://localhost:8191` or `http://localhost:8191/v1` — both are accepted; the plugin normalizes the value to exactly one `/v1`. Use the host IP when FlareSolverr runs on another machine or in Docker. **Leave empty and set only the executable path** to use the plugin-managed local instance on port 8191. |
+| **FlareSolverr Executable Path** | Optional, any OS. Full path to the binary the plugin should start and stop with the server — `…\flaresolverr.exe` on Windows, `…/flaresolverr` on Linux/macOS (execute bit required). Leave empty when using Docker or a remote instance. An empty URL plus a valid path implies `http://localhost:8191/v1`. |
 
-Save your changes. The **FlareSolverr** panel on the same page shows a live health badge and a **Test FlareSolverr Connection** button — click it to confirm the instance answers (works for the plugin-managed local instance and for a remote/Docker one alike; a 404 on `/health` just means that build lacks the route — the solver still works).
+**Choose one mode:**
 
-### Step 3 — How it works
+- **Managed local process** — set the executable path (URL optional). The plugin starts it with Jellyfin, waits up to about 60 seconds for `/health` to answer, and kills the whole process tree on shutdown. On Windows the child is additionally bound to a kill-on-close Job Object, so it also dies when Jellyfin is force-killed or crashes.
+- **External instance** — set only the URL (Docker, NAS, another host). The plugin probes `/health` at startup and logs whether it answered; it never starts or stops that instance.
 
-When Jellyfin starts, the plugin launches FlareSolverr (if you provided the executable path). When it needs to bypass Cloudflare, it uses it transparently. When Jellyfin shuts down, it kills the FlareSolverr process.
+Save the page. The **FlareSolverr** panel shows a live health badge (green = healthy) and a **Test FlareSolverr Connection** button. The test works for both modes. A `404`/`405` on `/health` only means that FlareSolverr build has no health route — the solver itself still works.
 
-You can verify it works by looking at your Debug logs for:
-`"JavLibrary": FlareSolverr fetched '…' and granted direct access`
+### Step 3 — Verify
+
+Click **Test FlareSolverr Connection** and confirm the success message. During a scan, the plugin log shows lines such as:
+
+```text
+"JavLibrary": FlareSolverr fetched '…' and granted direct access
+```
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---|---|
+| Health badge red, `connection refused` | Wrong host/port, container not running, or Docker networking — use the host IP / `host.docker.internal`, not `localhost`, from inside a Jellyfin container. |
+| Managed process exits immediately | The path must point at the binary itself, not the folder. On Linux/macOS run `chmod +x` and start it once manually to see the error; FlareSolverr needs a Chrome/Chromium installation. |
+| Health test returns `404` | Old FlareSolverr build without `/health`. The API still works; the badge may report it as reachable rather than healthy. |
+| Sites still blocked | The challenge could not be solved (IP reputation, rate limiting). Check FlareSolverr's own log; retry later or lower parallel scrapes. |
+| FlareSolverr missing after a crash | Restart Jellyfin: on Windows the Job Object kills leftovers; on Linux/macOS the hosted service reaps orphans before launching a new instance. |
 
 ## 📂 Library setup
 
@@ -304,26 +371,34 @@ You can verify it works by looking at your Debug logs for:
 
 ## ⚙️ Configuration
 
-Available in **Dashboard → Plugins → JavOrganizer**. Settings apply immediately.
+Available in **Dashboard → Plugins → JavOrganizer**. The page is split into **Scan · Sites · Engine · Cache · Collections · FlareSolverr**; every setting below applies immediately after **Save**.
 
-| Setting | Description |
+| Setting | What it does |
 |---|---|
-| **Language** | Preferred language for metadata (`en`, `ja`, `zh`, `tw`). |
-| **Max Sites Scraped at Once** | Limits parallel requests per video. |
-| **Parallel Scrapes** | How many videos to process simultaneously. |
-| **Delay Between Requests** | Time to wait between requests to the same site (in ms). |
-| **Successful-scrape cache** | How long to keep data before re-scraping (default 30 days). |
-| **Not-found cache** | How long to remember a failed lookup so we don't spam the sites (default 7 days). |
-| **Build collections** | Automatically create collections for cast, studios, genres, etc. |
+| **Auto-scan on startup** | Scrape items that still lack JavOrganizer metadata when the server starts (default on). |
+| **Language** | Preferred language for metadata (`en`, `ja`, `zh`, `tw`). English is preferred when a release has one. |
+| **Sites** | One switch per source: JavLibrary, JavDB, JavBus, MissAV + mirror, OneJAV, FANZA digital + DVD, JavLand, 123AV, SEXTB, SupJav, JavGG, JavSeen, JavMix, JavQuick, JavTube, jav.guru and MGStage. Disabled sites are never contacted. |
+| **Max Sites Scraped at Once** | How many enabled sites are queried concurrently for one code (1–20, default 8). Lower it if sites push back. |
+| **Parallel Scrapes** | How many videos are processed at the same time (1–32, default 4; stored values are clamped). |
+| **Delay Between Requests** | Pause between page fetches to the same site, in milliseconds (default 500). |
+| **Successful-scrape cache** | How long a successful scrape stays fresh before a normal scan re-fetches it, in hours (default 720 = 30 days; `0` disables expiry). |
+| **Not-found cache** | How long a failed lookup is remembered, in hours (default 168 = 7 days; `0` disables). |
+| **Build collections** | Create the performer, Most Viewed / Most Liked, All Videos and Newest Releases collections. |
+| **Studio / Genre / Year collections** | Optional extra groupings built by the collections task when their switch is on. |
+| **Min Videos per Collection** | A performer/studio/genre needs at least this many titles before a collection is created (default 2). |
+| **FlareSolverr URL** | Base URL of the solver, with or without `/v1`. See [Setting up FlareSolverr](#️-setting-up-flaresolverr). |
+| **FlareSolverr Executable Path** | Optional managed binary the plugin starts/stops with the server. Leave empty for Docker/remote. |
+
+The same page also hosts **Scan Library Now**, **Deep Re-scrape Everything** and **Cancel**, plus a live progress bar, the site-status board and the FlareSolverr test. The main-menu **JavOrganizer** entry opens this same page.
 
 ## ☁️ FlareSolverr lifecycle (auto start/stop)
 
 > [!IMPORTANT]
-> If you want the plugin to manage FlareSolverr for you (Windows only), make sure you fill out both the **URL** and the **Executable Path** in the plugin settings. If you're running it in Docker, just provide the URL.
+> If you want the plugin to manage FlareSolverr for you (Windows, macOS or Linux), set the **Executable Path** (the URL then defaults to the local instance on port 8191). If you're running it in Docker or remotely, just provide the URL.
 
-When configured this way, the plugin handles starting and stopping the process, and will even clean up leftover `chromedriver` instances if Jellyfin crashes.
+When configured this way, the plugin handles starting and stopping the process on every platform, and will even clean up leftover `chromedriver` instances if Jellyfin crashes.
 
-On Windows, the plugin also puts its FlareSolverr child into a **kill-on-close Job Object**, so FlareSolverr (and everything it spawned) is terminated by the operating system the moment Jellyfin exits — even when the server is force-killed (`taskkill /F`, End Task, a closed console window) or crashes, where no plugin shutdown callback runs at all. FlareSolverr therefore lives and dies with your Jellyfin server.
+On Windows, the plugin additionally puts its FlareSolverr child into a **kill-on-close Job Object**, so FlareSolverr (and everything it spawned) is terminated by the operating system the moment Jellyfin exits — even when the server is force-killed (`taskkill /F`, End Task, a closed console window) or crashes, where no plugin shutdown callback runs at all. On macOS and Linux the same guarantee is provided in software: the hosted service kills the whole process tree on graceful shutdown and reaps orphans on the next start. FlareSolverr therefore lives and dies with your Jellyfin server on every platform.
 
 ## 🛡️ Anti-ban, anti-detect and adaptive pacing
 
@@ -345,7 +420,7 @@ The scraping engine behaves like a fast, careful human — and proves it in the 
 
 ### Watch it live
 
-- The **Scan** page and the plugin settings page show the current **pacing multiplier** while a scan runs (`pacing 2.5× (easing off)`) and relax back to `1×` when sites are happy.
+- The plugin settings page shows the current **pacing multiplier** while a scan runs (`pacing 2.5× (easing off)`) and relaxes back to `1×` when sites are happy.
 - The **Site status** panel on the settings page lists every site as `active`, `banned — cooling off` or `unreachable — retrying later`, refreshing every 10 seconds.
 
 ## 🖼️ Cover art and backdrops
@@ -439,16 +514,27 @@ A scheduled task runs daily (default 04:00) to delete expired cache files and cl
 
 ## 🔨 Building from source and running tests
 
-You'll need the .NET SDK matching your target version. Use the included script:
+You'll need the .NET SDK matching your target version (6.0 for the 10.8 line, 8.0 for 10.9+). Use the included script for your platform:
+
+**Windows (PowerShell):**
 
 ```powershell
 .\build.ps1                        # Build all versions
 .\build.ps1 -JellyfinVersion 10.9  # Build the 10.9-and-later build
 ```
 
-To run the offline test suite:
+**macOS / Linux (bash):**
 
-```powershell
+```bash
+./build.sh                         # Build all versions
+./build.sh 10.9                    # Build the 10.9-and-later build
+```
+
+Both scripts produce the same `dist/` layout: a publish folder per build and one release zip per Jellyfin version line, each with its `.meta` sidecar and `.sha256` checksum. The bash script needs `zip` plus `sha256sum` (Linux) or `shasum` (macOS).
+
+To run the offline test suite (any platform):
+
+```bash
 dotnet run --project tools/SmokeTest -c Release
 ```
 
@@ -463,9 +549,10 @@ The source code is organized logically. Key files include:
 
 ## ❓ Troubleshooting
 
-**Manual scan buttons are in two places.**
-- **Main menu → "Scan"** — the dedicated scan page (one click from anywhere)
-- **Dashboard → Plugins → JavOrganizer** — the same buttons at the top of the settings page
+**Where are the manual scan buttons?**
+- **Dashboard → Plugins → JavOrganizer** — Scan Library Now, Deep Re-scrape
+  Everything and Cancel live at the top of the settings page, with a live
+  progress bar. The main-menu entry opens this same page.
 
 **Plugin doesn't show up in Jellyfin.**
 Make sure you downloaded the right zip for your Jellyfin version. The `.meta` sidecar file and `HtmlAgilityPack.dll` must be present.
@@ -484,20 +571,76 @@ The plugin tries to grab English titles if available. If it can't find one acros
 
 ## 🔗 Compatibility notes
 
-- You must use the build compiled for your specific Jellyfin version.
+- Two builds cover every supported Jellyfin: one for 10.8, one for 10.9 and
+  every later version. Pick the zip whose line matches your server (see the
+  [build matrix](#build-matrix--pick-the-build-matching-your-server)).
 - Jellyfin 10.8 has some minor API differences which are handled via compiler flags in the source.
+- Everything that changed after 10.9 is resolved at runtime (`JavApiCompat`),
+  so the 10.9 build keeps working on new Jellyfin releases without a rebuild.
 
 ## ✅ Verified on a live server
 
-We regularly test the plugin on real Jellyfin setups (e.g., v1.4.0 on Jellyfin 12.0.0). We verify that auto-scanning, scheduled tasks, FlareSolverr integration, and metadata fetching work correctly on large libraries.
+Every release is exercised on a real Jellyfin server, not just compiled.
 
-The 1.4.0 collection rebuild and cover fix were verified end-to-end on a live
-Jellyfin 12.0.0 server with 1,204 scraped videos: 191 actress cards and 7
-actor cards nested under the two browse cards, 198/198 performer collections
-carrying a poster, and all three levels (card → performer → videos) browsing
-correctly.
+**1.5.5 on Jellyfin 12.1.0 (Windows, FlareSolverr managed by the plugin):**
+
+- The plugin loads as `JavOrganizer 1.5.5.0`; the managed FlareSolverr child starts with the server and reports healthy.
+- The settings page is served by the web client (`/web/configurationpage?name=JavOrganizer`, HTTP 200).
+- Config, scan-state, site-state and FlareSolverr-health endpoints answer for an administrator; anonymous requests are rejected with `401` because every `/JavOrganizer/*` route now carries `RequiresElevation`.
+- A startup scan found 74 videos, queued the 29 that still need JavOrganizer metadata, and ran with 10 parallel workers and up to 8 sites per code; the log shows the sites being fetched through FlareSolverr.
+- The offline suite passes **408/408** checks, and the source compiles with **0 warnings / 0 errors** against the Jellyfin 12.3.0 and 12.4.0 assemblies.
+
+Earlier verification: the 1.4.0 collection rebuild ran end-to-end on a Jellyfin
+12.0.0 server with 1,204 scraped videos — 191 actress cards and 7 actor cards
+nested under the two browse cards, 198/198 performer collections carrying a
+poster, and all three levels (card → performer → videos) browsing correctly.
 
 ## 📋 Changelog
+
+### 1.5.5
+
+**A redesigned settings page, a batch of correctness fixes, and Jellyfin
+12.3 / 12.4 support.**
+
+**The settings page, rebuilt.** The page is now a clean, sectioned console:
+a sticky section nav (Scan · Sites · Engine · Cache · Collections ·
+FlareSolverr) with scroll-spy, custom toggle switches, a live site-status
+board mirrored into a header pill, a slim animated progress bar with a
+"now scraping" ticker, and a sticky save bar that flags unsaved changes.
+Every control is a native element styled with page-scoped CSS that adapts
+to dark and light themes — no `emby-*` web component is required, so the
+page keeps working on future web clients that drop those components. All
+fields, endpoints and polling behavior are unchanged.
+
+**Correctness fixes.**
+- The scan endpoints now require an **administrator** session
+  (`RequiresElevation`), like Jellyfin's own scheduled-task endpoints —
+  previously any signed-in user could start a deep re-scrape or cancel a
+  running pass.
+- A video that a user both **favorited and liked** now scores 3 + 2 = 5 in
+  the Most Liked ranking; the like used to overwrite the favorite.
+- The "site was reached" flag is now **per scrape call** instead of per
+  scraper instance, so one code's successful fetch can no longer vouch for
+  a concurrent code's failed one and get its miss cached as "not found".
+- Parallel scrapes are clamped to 1–32, and the All Videos collection diff
+  is now set-based instead of quadratic in the library size.
+- English-title retries are no longer wasted while JavLibrary is banned. A
+  Japanese-titled item is re-scraped up to three times to find an English
+  release, but an attempt now only counts when JavLibrary — the primary
+  English-title source — actually answered. Re-scrapes during a temporary
+  ban keep the budget intact, so a ban can no longer lock in a Japanese
+  title that an English release does exist for.
+- **A rescan now fixes a Japanese title immediately.** The provider used to
+  serve a fresh Japanese-titled cache record for up to six hours even when
+  the scan had just queued that item, so every rescan was a no-op and the
+  Japanese title stayed. The bounded three-attempt retry counter is now the
+  only limiter: a queued item is re-scraped on that pass, and only a title
+  with no English release anywhere is accepted after the third attempt.
+
+**Jellyfin 12.3 and 12.4** join the supported range. The same two builds
+still cover everything; the source was compiled against each server
+version's own assemblies (now through 12.4.0) and the CI compile matrix
+runs every one of them on each push.
 
 ### 1.5.4
 

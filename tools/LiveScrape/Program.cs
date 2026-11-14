@@ -54,9 +54,8 @@ foreach (var (key, scraper) in scrapers)
     try
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        video = await scraper.FindByCodeAsync(code, cts.Token);
+        (video, reached) = await scraper.ScrapeWithReachAsync(code, cts.Token);
         sw.Stop();
-        reached = scraper.SiteWasReached;
 
         if (video is null)
         {

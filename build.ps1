@@ -51,7 +51,7 @@ $dist = Join-Path $root 'dist'
 
 $pluginGuid = 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
 $pluginName = 'JavOrganizer'
-$pluginVersion = '1.5.4.0'
+$pluginVersion = '1.5.5.0'
 
 # Every Jellyfin version line the plugin supports, the build that serves it
 # and the targetAbi that build advertises for that line. A server accepts a
@@ -65,6 +65,8 @@ $lines = @(
     @{ slug = '120'; abi = '12.0.0.0'; build = '10.9' }
     @{ slug = '121'; abi = '12.1.0.0'; build = '10.9' }
     @{ slug = '122'; abi = '12.2.0.0'; build = '10.9' }
+    @{ slug = '123'; abi = '12.3.0.0'; build = '10.9' }
+    @{ slug = '124'; abi = '12.4.0.0'; build = '10.9' }
 )
 
 $targets = if ($JellyfinVersion) { @($JellyfinVersion) } else { @('10.8', '10.9') }

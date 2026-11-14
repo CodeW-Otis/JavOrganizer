@@ -45,7 +45,6 @@ public sealed partial class JavLibraryScraper : SiteScraper
     /// <returns>The matched video, or <c>null</c> when nothing matches.</returns>
     public override async Task<JavVideo?> FindByCodeAsync(string code, CancellationToken ct)
     {
-        BeginScrapeRound();
         if (string.IsNullOrWhiteSpace(code))
         {
             return null;

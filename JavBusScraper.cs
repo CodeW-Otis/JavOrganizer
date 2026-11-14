@@ -35,7 +35,6 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
     /// <returns>The matched video, or <c>null</c> when nothing matches.</returns>
     public override async Task<JavVideo?> FindByCodeAsync(string code, CancellationToken ct)
     {
-        BeginScrapeRound();
         var keyword = JavCodeParser.ToSearchKeyword(code);
         if (keyword.Length == 0)
         {

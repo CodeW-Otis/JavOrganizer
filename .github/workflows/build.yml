@@ -80,6 +80,14 @@ jobs:
             packages: "12.2.0"
             dotnet: "10.0.x"
             tfm: "net10.0"
+          - jf-version: "10.9"
+            packages: "12.3.0"
+            dotnet: "10.0.x"
+            tfm: "net10.0"
+          - jf-version: "10.9"
+            packages: "12.4.0"
+            dotnet: "10.0.x"
+            tfm: "net10.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -126,10 +134,32 @@ jobs:
       - name: Build the live-scrape harness
         run: dotnet build tools/LiveScrape -c Release --nologo
 
+  macos:
+    name: macOS build + tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET (6.0 for the 10.8 line, 8.0 for 10.9+)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+
+      # Runs the native bash build end-to-end (publish both lines, write the
+      # per-line .meta sidecars, zip and checksum them), proving the macOS
+      # toolchain produces the same release layout as the Windows script.
+      - name: Build every line with build.sh
+        run: bash build.sh
+
+      - name: Run the offline suite on macOS
+        run: dotnet run --project tools/SmokeTest -c Release | tee test-output.txt && ! grep -q "FAIL" test-output.txt
+
   release-build:
     name: Release artifacts (every version line)
     runs-on: windows-latest
-    needs: [build, test]
+    needs: [build, test, macos]
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4

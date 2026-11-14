@@ -8,6 +8,78 @@
     "category": "Metadata",
     "versions": [
       {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-124-v1.5.5.0.zip",
+        "checksum": "94830cbac936349849dcca8674a6462e1a6af8dc5f98dfd792554966bf64c0ba",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "12.3.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-123-v1.5.5.0.zip",
+        "checksum": "5c24025b09db21abc78e3d7087a66d839664d45eb3e34a1bb62209a11e741f86",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-122-v1.5.5.0.zip",
+        "checksum": "908da2f4aa31bb8460447c95f9fc8439c046b972cc251d75679750ad8dd8b3a3",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-121-v1.5.5.0.zip",
+        "checksum": "f9a0e48eec4bce9b8cef51b17efaefcf97c8077846ab8d23fb5746b8a56ed9d7",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-120-v1.5.5.0.zip",
+        "checksum": "3274844ea2eb4c0f74f24a070756276751b87b90e0a36d676aee35f26692964e",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-1011-v1.5.5.0.zip",
+        "checksum": "8ffa7d43ab1252702b343cd57118675d26f3f9c185427d96fa6f3b49b884555b",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-1010-v1.5.5.0.zip",
+        "checksum": "2e791dae8d3994e08d5b946773f457c1cc27597f021868d850831a43f675d890",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "10.9.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-109-v1.5.5.0.zip",
+        "checksum": "271c0ac253952e9712448dd288421fdaab003887883dbff8c7101705bbbdf8f6",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
+        "version": "1.5.5",
+        "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; and support for Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
+        "targetAbi": "10.8.13.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-108-v1.5.5.0.zip",
+        "checksum": "5e4d12f86660add412eb29cf5c0ade4ce701d9c6e6538ae73e43f7278bd874ec",
+        "timestamp": "2026-11-15T00:00:00Z"
+      },
+      {
         "version": "1.5.4",
         "changelog": "The settings page is reachable again. The plugin used to register a second, separate Scan page, and the Jellyfin 12.x web client picks the configuration page that is enabled in the main menu when a plugin has more than one - so Plugins -> Settings led to the scan page and the settings themselves were never shown. The scan controls now live on the settings page and the plugin registers that one page only, so the main menu entry and the Settings button open the same page on every Jellyfin version. Also adds Jellyfin 12.2 to the supported range: the same two builds as before cover 10.8 up to 12.2 and every later release, verified member by member against each server version's own assemblies.",
         "targetAbi": "12.2.0.0",

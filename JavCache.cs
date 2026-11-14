@@ -22,6 +22,7 @@ namespace Jellyfin.Plugin.JavOrganizer;
 internal static class JavCache
 {
     private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = false };
     private static readonly object IndexLock = new();
     private static Dictionary<string, string> _videoIdIndex = [];
 
@@ -67,7 +68,7 @@ internal static class JavCache
     }
 
     /// <summary>
-    /// Persists a scraped record to the cache directory as indented JSON and
+    /// Persists a scraped record to the cache directory as compact JSON and
     /// records its video id in the lookup index.
     /// </summary>
     /// <param name="normalizedCode">Cache-key form of the product code.</param>
@@ -78,8 +79,7 @@ internal static class JavCache
         try
         {
             Directory.CreateDirectory(CacheDir);
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(CacheFile(normalizedCode), JsonSerializer.Serialize(video, options));
+            File.WriteAllText(CacheFile(normalizedCode), JsonSerializer.Serialize(video, WriteOptions));
             DeleteNegativeMarker(normalizedCode);
 
             if (!string.IsNullOrWhiteSpace(video.VideoId))

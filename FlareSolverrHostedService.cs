@@ -60,9 +60,9 @@ public sealed class FlareSolverrHostedService : IHostedService
                 _logger.LogWarning("Configured FlareSolverr executable not found: {Path}", exe);
             }
 
-            // Nothing to manage here (Docker and non-Windows users point at
-            // an external FlareSolverr URL instead); still probe the health
-            // endpoint so the log states clearly whether it answers.
+            // Nothing to manage here (Docker users point at an external
+            // FlareSolverr URL instead); still probe the health endpoint so
+            // the log states clearly whether it answers.
             await ProbeConfiguredHealthAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -121,7 +121,10 @@ public sealed class FlareSolverrHostedService : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to launch FlareSolverr");
+            var hint = OperatingSystem.IsWindows()
+                ? string.Empty
+                : " On macOS/Linux the path must be a native executable with the execute permission set (chmod +x).";
+            _logger.LogWarning(ex, "Failed to launch FlareSolverr.{Hint}", hint);
         }
     }
 
@@ -218,9 +221,9 @@ public sealed class FlareSolverrHostedService : IHostedService
 
     /// <summary>
     /// Polls the FlareSolverr health endpoint (derived from the configured
-    /// URL — works for the plugin-managed local instance on Windows and
-    /// for a remote/Docker FlareSolverr alike) until it answers or the
-    /// token is cancelled. Gives up after roughly 60 seconds.
+    /// URL — works for the plugin-managed local instance on Windows, macOS
+    /// and Linux, and for a remote/Docker FlareSolverr alike) until it
+    /// answers or the token is cancelled. Gives up after roughly 60 seconds.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns><c>true</c> when the endpoint answered; <c>false</c> on timeout.</returns>

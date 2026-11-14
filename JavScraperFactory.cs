@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json.Serialization;
 
 namespace Jellyfin.Plugin.JavOrganizer;
 
@@ -126,14 +127,17 @@ internal static class JavScraperFactory
     /// <param name="Available">Whether the site can be scraped right now.</param>
     /// <param name="Reason">When unavailable: "banned" or "unreachable".</param>
     /// <param name="RetryAt">When the site will be contacted again (UTC), when known.</param>
+    // camelCase JSON names are required: the settings page reads s.enabled /
+    // s.name / s.reason, and a record otherwise serializes PascalCase, which
+    // made every site read as disabled in the live status panel.
     public sealed record SiteHealth(
-        string Key,
-        string Name,
-        bool Enabled,
-        int Priority,
-        bool Available,
-        string? Reason,
-        DateTime? RetryAt);
+        [property: JsonPropertyName("key")] string Key,
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("enabled")] bool Enabled,
+        [property: JsonPropertyName("priority")] int Priority,
+        [property: JsonPropertyName("available")] bool Available,
+        [property: JsonPropertyName("reason")] string? Reason,
+        [property: JsonPropertyName("retryAt")] DateTime? RetryAt);
 
     /// <summary>
     /// Captures the health state of every known site — enabled ones plus

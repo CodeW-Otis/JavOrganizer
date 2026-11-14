@@ -5,711 +5,1447 @@
     <title>JavOrganizer</title>
 </head>
 <body>
-    <div id="JavOrganizerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div id="JavOrganizerConfigPage" data-role="page" data-jav-theme="auto" class="page type-interior pluginConfigurationPage">
+        <script type="text/javascript">
+            // Restore the saved theme before the page paints, so a dark-mode
+            // user never sees a light flash. "auto" follows the OS/browser
+            // scheme through a CSS media query; light/dark are forced.
+            (function () {
+                var root = document.getElementById('JavOrganizerConfigPage');
+                var pref = 'auto';
+                try {
+                    var stored = localStorage.getItem('jav-theme');
+                    if (stored === 'light' || stored === 'dark') { pref = stored; }
+                } catch (e) { /* storage blocked: fall back to auto */ }
+                if (root) { root.setAttribute('data-jav-theme', pref); }
+            })();
+        </script>
         <div data-role="content">
             <div class="content-primary">
-                <!-- novalidate: the browser's own validation must never block
-                     the save, because a blocked submit fails silently and the
-                     server clamps every value anyway. -->
-                <form id="JavOrganizerConfigForm" novalidate>
-                    <div class="inputContainer" style="margin-bottom: 1.5em;">
-                        <button is="emby-button" type="button" id="ScanNowButton" class="raised button-submit block emby-button">
-                            <span>Scan Library Now</span>
-                        </button>
-                        <button is="emby-button" type="button" id="DeepScanButton" class="raised block emby-button" style="margin-top: 0.6em;">
-                            <span>Deep Re-scrape Everything</span>
-                        </button>
-                        <button is="emby-button" type="button" id="CancelScanButton" class="block emby-button" style="margin-top: 0.6em; display: none;">
-                            <span>Cancel Scan</span>
-                        </button>
-                        <progress id="ScanProgressBar" max="100" value="0" style="width: 100%; height: 10px; margin-top: 0.8em; display: none; accent-color: #00a4dc;"></progress>
-                        <div class="fieldDescription" id="ScanState">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
-                        <div class="fieldDescription" id="ScanCurrent" style="margin-top: 0.2em; display: none;"></div>
-                        <div class="fieldDescription" id="ScanStatus" style="margin-top: 0.2em;"></div>
-                        <div class="fieldDescription" style="margin-top: 0.6em;">
-                            <b>Scan Library Now</b> scrapes videos that are missing metadata, stuck at title-only, or still showing a Japanese title.
-                            <b>Deep Re-scrape Everything</b> purges each item's cache and re-fetches every video from the sites — use it after adding sites or upgrading.
-                            Either way the pass also runs automatically at server start, every 6 hours, and when the library discovers new files.
-                        </div>
-                    </div>
-                    <div class="paperList" style="padding: 0.8em 1em; margin-bottom: 1.5em;">
-                        <div style="font-weight: bold; margin-bottom: 0.4em;">Site status</div>
-                        <div class="fieldDescription" id="SiteStatusSummary" style="margin-bottom: 0.5em;">Loading site states…</div>
-                        <div id="SiteStatusList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.35em 1.2em; font-size: 0.92em;"></div>
-                        <div class="fieldDescription" style="margin-top: 0.5em;">Live view: <b>active</b> sites are scraped now; <b>banned</b> sites are in a 6-hour cool-off after the site complained; <b>unreachable</b> sites failed repeatedly and are skipped for 30–60 minutes. All recover automatically.</div>
-                    </div>
-                    <div class="paperList" style="padding: 0.8em 1em; margin-bottom: 1.5em;">
-                        <div style="font-weight: bold; margin-bottom: 0.4em;">FlareSolverr</div>
-                        <div id="FlareSolverrStatus" class="fieldDescription">Not tested yet.</div>
-                        <button is="emby-button" type="button" id="TestFlareSolverrButton" class="raised block emby-button" style="margin-top: 0.5em;">
-                            <span>Test FlareSolverr Connection</span>
-                        </button>
-                        <div class="fieldDescription" style="margin-top: 0.4em;">Checks the configured FlareSolverr (local managed instance or a remote/Docker one) by calling its health endpoint.</div>
-                    </div>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="Language">Language</label>
-                        <select is="emby-select" id="Language" name="Language" class="emby-select-withcolor emby-select">
-                            <option value="en">English (en)</option>
-                            <option value="ja">日本語 (ja)</option>
-                            <option value="zh">中文 (zh)</option>
-                            <option value="tw">中文 (繁體) (tw)</option>
-                        </select>
-                        <div class="fieldDescription">Language path segment used on the sites (affects scraped titles and genres).</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="FlareSolverrUrl">FlareSolverr URL</label>
-                        <input id="FlareSolverrUrl" name="FlareSolverrUrl" type="text" is="emby-input" placeholder="http://localhost:8191/v1" />
-                        <div class="fieldDescription">Base URL of a FlareSolverr instance used when Cloudflare blocks the server. Leave empty to disable the fallback.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="FlaresolverrExecutablePath">FlareSolverr Executable Path</label>
-                        <input id="FlaresolverrExecutablePath" name="FlaresolverrExecutablePath" type="text" is="emby-input" placeholder="&lt;path-to&gt;\flaresolverr.exe" />
-                        <div class="fieldDescription">When set, the plugin starts this FlareSolverr together with the Jellyfin server and stops it when the server stops. Leave empty if you run FlareSolverr yourself.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MaxConcurrentScrapes">Parallel Scrapes (videos at once)</label>
-                        <input id="MaxConcurrentScrapes" name="MaxConcurrentScrapes" type="number" is="emby-input" min="1" step="1" />
-                        <div class="fieldDescription">How many videos are scraped at the same time during scans. Default 4.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MaxSitesPerScrape">Max Sites Scraped at Once (per video)</label>
-                        <input id="MaxSitesPerScrape" name="MaxSitesPerScrape" type="number" is="emby-input" min="1" max="20" step="1" />
-                        <div class="fieldDescription">How many of the enabled websites are scraped at the same time for each video — up to 20. Sites are ranked by priority (richest sources first); banned or unreachable sites are skipped and the next site takes their slot. Default 8. More sites = fuller metadata and fewer requests per single site (anti-ban), but more total traffic.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="RequestDelayMs">Delay Between Requests (ms)</label>
-                        <input id="RequestDelayMs" name="RequestDelayMs" type="number" is="emby-input" min="0" step="1" />
-                        <div class="fieldDescription">Minimum spacing between requests to the same site (randomly jittered so traffic never looks machine-regular). Default 500 ms; 0 disables.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="CacheHours">Successful-Scrape Cache (hours)</label>
-                        <input id="CacheHours" name="CacheHours" type="number" is="emby-input" min="0" step="1" />
-                        <div class="fieldDescription">How long a scraped video is kept before the next scan re-fetches it. Default 720 (30 days). 0 disables expiry.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="NegativeCacheHours">Not-Found Cache (hours)</label>
-                        <input id="NegativeCacheHours" name="NegativeCacheHours" type="number" is="emby-input" min="0" step="1" />
-                        <div class="fieldDescription">How long an unmatched code is remembered so library re-scans skip it. Default 168 (7 days). 0 disables.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="AutoScanOnStartup" name="AutoScanOnStartup" type="checkbox" is="emby-checkbox" />
-                            <span>Auto-scan library on server start</span>
-                        </label>
-                        <div class="fieldDescription">When the server starts, the plugin automatically finds videos missing JavOrganizer metadata and scrapes them. A scheduled task (every 6 hours) also picks up files added or failed later — see Dashboard → Scheduled Tasks → "Scan JavOrganizer Library".</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavDb" name="UseJavDb" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavDB (gender-separated cast)</span>
-                        </label>
-                        <div class="fieldDescription">Separates actors by gender. It aggressively bans IPs — the plugin detects bans and backs off automatically; re-enable after a few days if banned.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavBus" name="UseJavBus" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavBus (fast second source: covers, previews)</span>
-                        </label>
-                        <div class="fieldDescription">Serves pages directly with an age cookie and rarely blocks — the fastest extra source.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseMissAv" name="UseMissAv" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape MissAV (gender-separated cast)</span>
-                        </label>
-                        <div class="fieldDescription">Labels Actress and Actor explicitly — a gender-aware source.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseMissAvMirror" name="UseMissAvMirror" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape MissAV mirror (missav.ai)</span>
-                        </label>
-                        <div class="fieldDescription">The same site on its mirror domain — adds resilience when missav.ws is blocked or down.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseOneJav" name="UseOneJav" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape OneJAV</span>
-                        </label>
-                        <div class="fieldDescription">Covers, release dates and cast from per-code pages.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseFanza" name="UseFanza" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape FANZA / DMM digital catalog</span>
-                        </label>
-                        <div class="fieldDescription">The official Japanese catalog — richest data. Sometimes blocks non-Japanese IPs; blocked sites are skipped automatically.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseFanzaDvd" name="UseFanzaDvd" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape FANZA DVD catalog</span>
-                        </label>
-                        <div class="fieldDescription">The physical-DMM side of FANZA — an independent second page per code.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavLand" name="UseJavLand" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavLand</span>
-                        </label>
-                        <div class="fieldDescription">JavBus-family per-code pages — fast direct source.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="Use123Av" name="Use123Av" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape 123AV</span>
-                        </label>
-                        <div class="fieldDescription">MissAV-template site with gender-labeled Actress/Actor fields.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseSextb" name="UseSextb" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape SEXTB</span>
-                        </label>
-                        <div class="fieldDescription">Per-code streaming pages with cover and cast.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseSupJav" name="UseSupJav" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape SupJav</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavGg" name="UseJavGg" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavGG</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavSeen" name="UseJavSeen" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavSeen</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavMix" name="UseJavMix" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavMix</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavQuick" name="UseJavQuick" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavQuick</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavTube" name="UseJavTube" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape JavTube</span>
-                        </label>
-                        <div class="fieldDescription">WordPress-style search; fills title, cover, date and categories.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJavGuru" name="UseJavGuru" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape jav.guru (gender-separated cast)</span>
-                        </label>
-                        <div class="fieldDescription">Labels Actress and Actor separately and serves English titles — a gender-aware source that also refines the collections' gender split.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseMgstage" name="UseMgstage" type="checkbox" is="emby-checkbox" />
-                            <span>Scrape MGStage</span>
-                        </label>
-                        <div class="fieldDescription">The official store for amateur labels (SIRO etc.).</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="BuildCollections" name="BuildCollections" type="checkbox" is="emby-checkbox" />
-                            <span>Build collections (per actress/actor, Most Viewed, Most Liked)</span>
-                        </label>
-                        <div class="fieldDescription">A daily task creates one collection per person (with their photo as the poster) plus two ranked collections from your library's play and like history.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="BuildStudioCollections" name="BuildStudioCollections" type="checkbox" is="emby-checkbox" />
-                            <span>Also build studio collections ("Studio: …")</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="BuildGenreCollections" name="BuildGenreCollections" type="checkbox" is="emby-checkbox" />
-                            <span>Also build genre collections ("Genre: …")</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="BuildYearCollections" name="BuildYearCollections" type="checkbox" is="emby-checkbox" />
-                            <span>Also build year collections ("Year: …")</span>
-                        </label>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MinVideosPerCollection">Min videos per person collection</label>
-                        <input id="MinVideosPerCollection" name="MinVideosPerCollection" type="number" is="emby-input" min="1" step="1" />
-                        <div class="fieldDescription">A person gets their own collection only when they appear in at least this many scraped videos. Default 2.</div>
-                    </div>
-                    <div>
-                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Save</span>
-                        </button>
-                        <div class="fieldDescription" id="ConfigStatus" style="margin-top: 0.4em;"></div>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <script type="text/javascript">
-            var JavOrganizerConfig = {
-                pluginUniqueId: 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
-            };
-
-            var scanStateTimer = null;
-            var siteStateTimer = null;
-
-            // The Jellyfin 12.x web client has no AMD loader, so loading a
-            // module through it throws there and takes the rest of the handler
-            // with it. That is what left the scan stuck on "Starting..." and
-            // the save without any feedback. Put the message on the page
-            // instead, which works on every client.
-            function setStatus(elementId, message, isError) {
-                var el = document.querySelector(elementId);
-                if (!el) { return; }
-                el.textContent = message;
-                el.style.color = isError ? '#e5a00d' : '#4caf50';
-            }
-
-            function siteStatusText(reason, retryAt) {
-                if (reason === 'banned') {
-                    return 'banned — cooling off' + (retryAt ? ' until retry' : '');
-                }
-                if (reason === 'unreachable') {
-                    return 'unreachable — retrying later' + (retryAt ? ' until retry' : '');
-                }
-                return 'active';
-            }
-
-            // Site names come from the server; escape them before they reach
-            // innerHTML so a scraped site name can never inject markup.
-            function escapeHtml(value) {
-                return String(value === null || value === undefined ? '' : value)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            function updateSiteStatus() {
-                // dataType:'json' is required: without it ApiClient.ajax
-                // resolves to the raw fetch Response and every field read off
-                // the payload is undefined.
-                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Sites/State'), dataType: 'json' }).then(function (data) {
-                    var list = document.querySelector('#SiteStatusList');
-                    var summary = document.querySelector('#SiteStatusSummary');
-                    if (!list || !data || !data.sites) { return; }
-
-                    var active = 0, banned = 0, unreachable = 0, disabled = 0;
-                    var html = '';
-                    data.sites.forEach(function (s) {
-                        // Disabled sites are counted, but only the sites that
-                        // actually participate are listed — a wall of grey
-                        // "disabled" rows buries the ones that matter.
-                        if (!s.enabled) { disabled++; return; }
-                        if (s.reason === 'banned') { banned++; }
-                        else if (s.reason === 'unreachable') { unreachable++; }
-                        else { active++; }
-
-                        var color = s.reason ? '#e5a00d' : '#4caf50';
-                        html += '<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' +
-                            '<span style="color:' + color + ';">●</span> ' + escapeHtml(s.name) +
-                            ' <span style="color: ' + (s.reason ? '#e5a00d' : 'rgba(255,255,255,0.55)') + ';">— ' +
-                            escapeHtml(siteStatusText(s.reason, s.retryAt)) + '</span></div>';
-                    });
-
-                    list.innerHTML = html;
-                    var parts = [];
-                    if (active) { parts.push(active + ' active'); }
-                    if (banned) { parts.push(banned + ' banned'); }
-                    if (unreachable) { parts.push(unreachable + ' unreachable'); }
-                    if (disabled) { parts.push(disabled + ' disabled in settings'); }
-                    summary.textContent = parts.length ? parts.join(' · ') : 'No sites enabled.';
-                }, function () {
-                    // The panel is decoration; a failed read must not raise an
-                    // unhandled rejection or wipe what is already shown.
-                });
-            }
-
-            function testFlareSolverr() {
-                var btn = document.querySelector('#TestFlareSolverrButton');
-                var out = document.querySelector('#FlareSolverrStatus');
-                btn.disabled = true;
-                btn.querySelector('span').textContent = 'Testing…';
-                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/FlareSolverr/Health'), dataType: 'json' }).then(function (r) {
-                    btn.disabled = false;
-                    btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
-                    if (!r.configured) {
-                        out.style.color = '#e5a00d';
-                        out.textContent = 'No FlareSolverr URL is configured. Sites behind Cloudflare will not be bypassed.';
-                    } else if (r.healthy) {
-                        out.style.color = '#4caf50';
-                        out.textContent = '✓ ' + r.message;
-                    } else {
-                        out.style.color = '#e5a00d';
-                        out.textContent = '✗ ' + r.message;
-                    }
-                }, function () {
-                    btn.disabled = false;
-                    btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
-                    out.style.color = '#e5a00d';
-                    out.textContent = 'Could not reach the Jellyfin API for the test.';
-                });
-            }
-
-            document.querySelector('#TestFlareSolverrButton')
-                .addEventListener('click', testFlareSolverr);
-
-            function setScanButtons(running) {
-                var scanBtn = document.querySelector('#ScanNowButton');
-                var deepBtn = document.querySelector('#DeepScanButton');
-                var cancelBtn = document.querySelector('#CancelScanButton');
-                if (running) {
-                    scanBtn.disabled = true;
-                    deepBtn.disabled = true;
-                    cancelBtn.style.display = '';
-                    cancelBtn.disabled = false;
-                } else {
-                    scanBtn.disabled = false;
-                    deepBtn.disabled = false;
-                    cancelBtn.style.display = 'none';
-                    cancelBtn.disabled = false;
-                    scanBtn.querySelector('span').textContent = 'Scan Library Now';
-                    deepBtn.querySelector('span').textContent = 'Deep Re-scrape Everything';
-                }
-            }
-
-            // The scan state is polled every 1.5s while a pass runs: the
-            // endpoint is a cheap in-memory read (10-60ms even during a
-            // full library pass), so a live indicator costs the server
-            // almost nothing.
-            var scanPollMs = 1500;
-
-            function updateScanState() {
-                // dataType:'json' is required: without it ApiClient.ajax
-                // resolves to the raw fetch Response rather than the parsed
-                // body, so the progress indicator could never appear.
-                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State'), dataType: 'json' }).then(function (state) {
-                    var el = document.querySelector('#ScanState');
-                    var bar = document.querySelector('#ScanProgressBar');
-                    if (!state) {
-                        return;
+                <style>
+                    /* ============================================================
+                       JavOrganizer settings — Apple "Liquid Glass" language.
+                       Translucent frosted panels with specular top edges float
+                       over a soft ambient light field; controls are native and
+                       everything is scoped to #JavOrganizerConfigPage so nothing
+                       leaks into the Jellyfin shell. No emby-* component and no
+                       AMD loader, so it runs on every web client including 12.x.
+                       Auto / Light / Dark is persisted in localStorage.
+                       ============================================================ */
+                    #JavOrganizerConfigPage {
+                        /* ---- light: Apple system palette on frosted glass ---- */
+                        --jav-accent: #007aff;
+                        --jav-accent-deep: #0062cc;
+                        --jav-accent-soft: rgba(0, 122, 255, .12);
+                        --jav-green: #34c759;
+                        --jav-orange: #ff9500;
+                        --jav-red: #ff3b30;
+                        --jav-text: #1d1d1f;
+                        --jav-text-2: #4b4b50;
+                        --jav-text-3: #6e6e73;
+                        --jav-app-bg: #eef1f6;
+                        --jav-glass: rgba(255, 255, 255, .72);
+                        --jav-glass-strong: rgba(255, 255, 255, .86);
+                        --jav-glass-field: rgba(255, 255, 255, .62);
+                        --jav-glass-border: rgba(255, 255, 255, .7);
+                        --jav-glass-hairline: rgba(20, 30, 60, .08);
+                        --jav-specular: rgba(255, 255, 255, .9);
+                        --jav-sheen: linear-gradient(135deg, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 46%);
+                        --jav-shadow: 0 10px 40px rgba(20, 30, 60, .12);
+                        --jav-shadow-sm: 0 2px 10px rgba(20, 30, 60, .10);
+                        --jav-blur: blur(30px) saturate(1.8);
+                        --jav-brand-grad: linear-gradient(90deg, #22c8ee, #3d63f2, #c445f0);
+                        --jav-orb-a: rgba(34, 200, 238, .30);
+                        --jav-orb-b: rgba(61, 99, 242, .26);
+                        --jav-orb-c: rgba(196, 69, 240, .20);
+                        --jav-radius: 26px;
+                        --jav-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+                        --jav-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Noto Sans", Helvetica, Arial, sans-serif;
                     }
 
-                    setScanButtons(state.running);
-                    if (state.running) {
-                        var done = state.completed || 0;
-                        var total = state.totalPending || 0;
-                        var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                    #JavOrganizerConfigPage[data-jav-theme="dark"] {
+                        --jav-accent: #0a84ff;
+                        --jav-accent-deep: #3d9bff;
+                        --jav-accent-soft: rgba(10, 132, 255, .2);
+                        --jav-green: #30d158;
+                        --jav-orange: #ff9f0a;
+                        --jav-red: #ff453a;
+                        --jav-text: #f5f5f7;
+                        --jav-text-2: #c9c9ce;
+                        --jav-text-3: #9a9aa0;
+                        --jav-app-bg: #0b0d12;
+                        --jav-glass: rgba(30, 32, 40, .66);
+                        --jav-glass-strong: rgba(58, 61, 72, .8);
+                        --jav-glass-field: rgba(255, 255, 255, .09);
+                        --jav-glass-border: rgba(255, 255, 255, .14);
+                        --jav-glass-hairline: rgba(255, 255, 255, .08);
+                        --jav-specular: rgba(255, 255, 255, .22);
+                        --jav-sheen: linear-gradient(135deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, 0) 46%);
+                        --jav-shadow: 0 14px 44px rgba(0, 0, 0, .5);
+                        --jav-shadow-sm: 0 2px 12px rgba(0, 0, 0, .4);
+                        --jav-blur: blur(30px) saturate(1.6);
+                        --jav-orb-a: rgba(34, 200, 238, .26);
+                        --jav-orb-b: rgba(93, 124, 255, .24);
+                        --jav-orb-c: rgba(196, 69, 240, .22);
+                    }
 
-                        // Elapsed + estimated remaining, so a slow batch never looks frozen.
-                        // startedAt arrives as ISO-UTC ("…Z"); Date.parse handles it exactly.
-                        var elapsedText = '';
-                        if (state.startedAt) {
-                            var startMs = Date.parse(state.startedAt);
-                            var elapsedMs = startMs > 0 ? Date.now() - startMs : 0;
-                            if (elapsedMs > 0 && elapsedMs < 7 * 24 * 3600 * 1000) {
-                                var eMin = Math.floor(elapsedMs / 60000);
-                                var eSec = Math.floor((elapsedMs % 60000) / 1000);
-                                elapsedText = eMin > 0 ? eMin + 'm ' + eSec + 's' : eSec + 's';
-                                if (done > 0) {
-                                    var perItemMs = elapsedMs / done;
-                                    var remainMin = Math.round(perItemMs * (total - done) / 60000);
-                                    elapsedText += ' elapsed' + (remainMin >= 1 ? ', ~' + remainMin + ' min left' : '');
+                    @media (prefers-color-scheme: dark) {
+                        #JavOrganizerConfigPage[data-jav-theme="auto"] {
+                            --jav-accent: #0a84ff;
+                            --jav-accent-deep: #3d9bff;
+                            --jav-accent-soft: rgba(10, 132, 255, .2);
+                            --jav-green: #30d158;
+                            --jav-orange: #ff9f0a;
+                            --jav-red: #ff453a;
+                            --jav-text: #f5f5f7;
+                            --jav-text-2: #c9c9ce;
+                            --jav-text-3: #9a9aa0;
+                            --jav-app-bg: #0b0d12;
+                            --jav-glass: rgba(30, 32, 40, .66);
+                            --jav-glass-strong: rgba(58, 61, 72, .8);
+                            --jav-glass-field: rgba(255, 255, 255, .09);
+                            --jav-glass-border: rgba(255, 255, 255, .14);
+                            --jav-glass-hairline: rgba(255, 255, 255, .08);
+                            --jav-specular: rgba(255, 255, 255, .22);
+                            --jav-sheen: linear-gradient(135deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, 0) 46%);
+                            --jav-shadow: 0 14px 44px rgba(0, 0, 0, .5);
+                            --jav-shadow-sm: 0 2px 12px rgba(0, 0, 0, .4);
+                            --jav-blur: blur(30px) saturate(1.6);
+                            --jav-orb-a: rgba(34, 200, 238, .26);
+                            --jav-orb-b: rgba(93, 124, 255, .24);
+                            --jav-orb-c: rgba(196, 69, 240, .22);
+                        }
+                    }
+
+                    /* ---- themed scrollbars in the glass language ---- */
+                    #JavOrganizerConfigPage .jav-scroll { scrollbar-width: thin; scrollbar-color: var(--jav-glass-border) transparent; }
+                    #JavOrganizerConfigPage .jav-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+                    #JavOrganizerConfigPage .jav-scroll::-webkit-scrollbar-track { background: transparent; }
+                    #JavOrganizerConfigPage .jav-scroll::-webkit-scrollbar-thumb { background: var(--jav-glass-border); border-radius: 999px; }
+                    #JavOrganizerConfigPage .jav-scroll::-webkit-scrollbar-thumb:hover { background: var(--jav-text-3); }
+
+                    /* ---- app surface + ambient light field ---- */
+                    #JavOrganizerConfigPage .jav-app {
+                        position: relative;
+                        font-family: var(--jav-sans);
+                        color: var(--jav-text);
+                        background: var(--jav-app-bg);
+                        border: 1px solid var(--jav-glass-border);
+                        border-radius: 30px;
+                        box-shadow: var(--jav-shadow), inset 0 1px 0 var(--jav-specular);
+                        padding: 26px 26px 20px;
+                        margin: 4px 0 22px;
+                        overflow: hidden;
+                        -webkit-font-smoothing: antialiased;
+                        transition: background-color .35s ease, color .35s ease, border-color .35s ease;
+                    }
+
+                    #JavOrganizerConfigPage .jav-ambient { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+                    #JavOrganizerConfigPage .jav-orb { position: absolute; border-radius: 50%; filter: blur(64px); will-change: transform; }
+                    #JavOrganizerConfigPage .jav-orb-a { width: 420px; height: 420px; top: -140px; left: -90px; background: radial-gradient(circle at 30% 30%, var(--jav-orb-a), transparent 70%); animation: jav-drift-a 34s ease-in-out infinite alternate; }
+                    #JavOrganizerConfigPage .jav-orb-b { width: 380px; height: 380px; top: -60px; right: -110px; background: radial-gradient(circle at 60% 40%, var(--jav-orb-b), transparent 70%); animation: jav-drift-b 40s ease-in-out infinite alternate; }
+                    #JavOrganizerConfigPage .jav-orb-c { width: 460px; height: 460px; bottom: -220px; left: 32%; background: radial-gradient(circle at 50% 50%, var(--jav-orb-c), transparent 70%); animation: jav-drift-c 46s ease-in-out infinite alternate; }
+                    @keyframes jav-drift-a { from { transform: translate(0, 0); } to { transform: translate(60px, 40px); } }
+                    @keyframes jav-drift-b { from { transform: translate(0, 0); } to { transform: translate(-50px, 60px); } }
+                    @keyframes jav-drift-c { from { transform: translate(0, 0); } to { transform: translate(40px, -50px); } }
+
+                    #JavOrganizerConfigPage .jav-shell { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; }
+
+                    /* ---- shared glass material ---- */
+                    #JavOrganizerConfigPage .jav-glass {
+                        background-color: var(--jav-glass);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow-sm);
+                    }
+
+                    /* ---------- header ---------- */
+                    #JavOrganizerConfigPage .jav-head {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 18px;
+                        flex-wrap: wrap;
+                        padding: 4px 4px 22px;
+                    }
+                    #JavOrganizerConfigPage .jav-brand { display: flex; align-items: center; gap: 15px; min-width: 0; }
+                    #JavOrganizerConfigPage .jav-mark {
+                        flex: none;
+                        width: 48px;
+                        height: 48px;
+                        display: grid;
+                        place-items: center;
+                    }
+                    #JavOrganizerConfigPage .jav-mark img {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: contain;
+                        filter: drop-shadow(0 4px 12px var(--jav-accent-soft));
+                    }
+                    #JavOrganizerConfigPage .jav-title { font-size: 23px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+                    #JavOrganizerConfigPage .jav-sub { font-size: 12.5px; color: var(--jav-text-3); margin-top: 4px; letter-spacing: -.01em; }
+                    #JavOrganizerConfigPage .jav-head-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+                    /* theme segmented control (glass) */
+                    #JavOrganizerConfigPage .jav-theme {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 2px;
+                        padding: 3px;
+                        border-radius: 999px;
+                        background-color: var(--jav-glass-field);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        box-shadow: inset 0 1px 0 var(--jav-specular);
+                    }
+                    #JavOrganizerConfigPage .jav-theme-btn {
+                        appearance: none; border: none; background: transparent;
+                        color: var(--jav-text-3);
+                        width: 32px; height: 28px; border-radius: 999px;
+                        display: grid; place-items: center; cursor: pointer;
+                        transition: background-color .2s, color .2s, box-shadow .2s;
+                    }
+                    #JavOrganizerConfigPage .jav-theme-btn:hover { color: var(--jav-text); }
+                    #JavOrganizerConfigPage .jav-theme-btn[aria-pressed="true"] {
+                        background: var(--jav-glass-strong);
+                        color: var(--jav-accent);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow-sm);
+                    }
+                    #JavOrganizerConfigPage .jav-theme-btn:focus-visible { outline: 2px solid var(--jav-accent); outline-offset: 2px; }
+                    #JavOrganizerConfigPage .jav-theme-btn svg { width: 15px; height: 15px; }
+
+                    #JavOrganizerConfigPage .jav-engine {
+                        display: inline-flex; align-items: center; gap: 8px;
+                        font-size: 12px; padding: 7px 13px; border-radius: 999px;
+                        color: var(--jav-text-2); white-space: nowrap;
+                        background-color: var(--jav-glass-field);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        box-shadow: inset 0 1px 0 var(--jav-specular);
+                    }
+                    #JavOrganizerConfigPage .jav-engine i { width: 7px; height: 7px; border-radius: 50%; background: var(--jav-green); flex: none; box-shadow: 0 0 8px var(--jav-green); }
+                    #JavOrganizerConfigPage .jav-engine.is-warn i { background: var(--jav-orange); box-shadow: 0 0 8px var(--jav-orange); }
+
+                    /* ---------- floating glass tab bar ---------- */
+                    #JavOrganizerConfigPage .jav-tabbar {
+                        position: sticky; top: 10px; z-index: 30;
+                        display: flex; gap: 3px;
+                        padding: 5px;
+                        border-radius: 999px;
+                        margin-bottom: 22px;
+                        overflow-x: auto;
+                        background-color: var(--jav-glass);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow-sm);
+                    }
+                    #JavOrganizerConfigPage .jav-tab {
+                        appearance: none; border: none; background: transparent;
+                        font: inherit; font-size: 12.5px; font-weight: 550; letter-spacing: -.01em;
+                        color: var(--jav-text-2);
+                        display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+                        flex: 1 1 auto; min-width: max-content;
+                        padding: 9px 15px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+                        transition: background-color .2s, color .2s, box-shadow .2s;
+                    }
+                    #JavOrganizerConfigPage .jav-tab svg { width: 15px; height: 15px; flex: none; opacity: .85; }
+                    #JavOrganizerConfigPage .jav-tab:hover { color: var(--jav-text); }
+                    #JavOrganizerConfigPage .jav-tab.is-active {
+                        background: var(--jav-glass-strong);
+                        color: var(--jav-text);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow-sm);
+                    }
+                    #JavOrganizerConfigPage .jav-tab.is-active svg { color: var(--jav-accent); opacity: 1; }
+                    #JavOrganizerConfigPage .jav-tab:focus-visible { outline: 2px solid var(--jav-accent); outline-offset: 2px; }
+
+                    /* ---------- panels ---------- */
+                    #JavOrganizerConfigPage .jav-main { min-width: 0; }
+                    #JavOrganizerConfigPage .jav-panel { display: none; }
+                    #JavOrganizerConfigPage .jav-panel.is-active { display: block; animation: jav-panel-in .34s cubic-bezier(.2, .7, .2, 1); }
+                    @keyframes jav-panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+                    #JavOrganizerConfigPage .jav-panel-head { margin-bottom: 18px; padding: 0 4px; }
+                    #JavOrganizerConfigPage .jav-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: -.01em; color: var(--jav-accent); }
+                    #JavOrganizerConfigPage .jav-panel-title { font-size: 22px; font-weight: 700; letter-spacing: -.03em; margin: 5px 0 0; }
+                    #JavOrganizerConfigPage .jav-panel-desc { font-size: 13.5px; line-height: 1.55; color: var(--jav-text-2); margin: 8px 0 0; max-width: 64ch; letter-spacing: -.01em; }
+
+                    #JavOrganizerConfigPage .jav-card {
+                        background-color: var(--jav-glass);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        border-radius: var(--jav-radius);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow-sm);
+                        padding: 22px 24px;
+                        margin-bottom: 16px;
+                        transition: background-color .35s ease, border-color .35s ease;
+                    }
+
+                    #JavOrganizerConfigPage .jav-grouplabel {
+                        display: flex; align-items: center; gap: 12px;
+                        font-size: 12px; font-weight: 600; letter-spacing: -.01em;
+                        color: var(--jav-text-3); margin: 24px 0 12px;
+                    }
+                    #JavOrganizerConfigPage .jav-grouplabel:first-child { margin-top: 0; }
+                    #JavOrganizerConfigPage .jav-grouplabel::after { content: ""; flex: 1; height: 1px; background: var(--jav-glass-hairline); }
+
+                    /* ---------- buttons ---------- */
+                    #JavOrganizerConfigPage .jav-btn {
+                        appearance: none; -webkit-appearance: none;
+                        font: inherit; font-size: 14px; font-weight: 600; letter-spacing: -.01em;
+                        border-radius: 14px; padding: 12px 20px; border: 1px solid transparent;
+                        cursor: pointer; color: var(--jav-text);
+                        background-color: var(--jav-glass-field);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        box-shadow: inset 0 1px 0 var(--jav-specular);
+                        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+                        transition: background-color .18s, border-color .18s, color .18s, transform .08s, box-shadow .18s, filter .18s;
+                    }
+                    #JavOrganizerConfigPage .jav-btn:hover:not(:disabled) { filter: brightness(1.04); }
+                    #JavOrganizerConfigPage .jav-btn:active { transform: scale(.97); }
+                    #JavOrganizerConfigPage .jav-btn:disabled { opacity: .5; cursor: default; transform: none; }
+                    #JavOrganizerConfigPage .jav-btn:focus-visible { outline: 2px solid var(--jav-accent); outline-offset: 2px; }
+                    #JavOrganizerConfigPage .jav-btn-primary {
+                        background-color: var(--jav-accent);
+                        background-image: linear-gradient(135deg, #35b6ee, #3d63f2);
+                        color: #fff; border-color: transparent;
+                        box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 6px 18px var(--jav-accent-soft);
+                    }
+                    #JavOrganizerConfigPage .jav-btn-primary:hover:not(:disabled) { filter: brightness(1.07); }
+                    #JavOrganizerConfigPage .jav-btn-ghost { border-color: var(--jav-glass-border); }
+                    #JavOrganizerConfigPage .jav-btn-danger { background-color: transparent; background-image: none; border-color: var(--jav-red); color: var(--jav-red); box-shadow: none; }
+                    #JavOrganizerConfigPage .jav-btn-danger:hover:not(:disabled) { background-color: rgba(255, 59, 48, .1); filter: none; }
+
+                    #JavOrganizerConfigPage .jav-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+                    #JavOrganizerConfigPage .jav-actions .jav-btn { width: 100%; }
+
+                    #JavOrganizerConfigPage .jav-linkbtn {
+                        appearance: none; border: none; background: none; font: inherit;
+                        font-size: 12.5px; font-weight: 600; color: var(--jav-accent);
+                        cursor: pointer; padding: 3px 6px; border-radius: 7px;
+                    }
+                    #JavOrganizerConfigPage .jav-linkbtn:hover { background: var(--jav-accent-soft); }
+                    #JavOrganizerConfigPage .jav-linkbtn:focus-visible { outline: 2px solid var(--jav-accent); outline-offset: 2px; }
+
+                    /* ---------- scan progress ---------- */
+                    #JavOrganizerConfigPage .jav-progress { margin-top: 20px; }
+                    #JavOrganizerConfigPage progress#ScanProgressBar {
+                        appearance: none; -webkit-appearance: none;
+                        width: 100%; height: 6px; border: none; border-radius: 999px; overflow: hidden;
+                        background: var(--jav-glass-field); display: block;
+                    }
+                    #JavOrganizerConfigPage progress#ScanProgressBar::-webkit-progress-bar { background: var(--jav-glass-field); border-radius: 999px; }
+                    #JavOrganizerConfigPage progress#ScanProgressBar::-webkit-progress-value { background: var(--jav-brand-grad); border-radius: 999px; transition: width .4s ease; }
+                    #JavOrganizerConfigPage progress#ScanProgressBar::-moz-progress-bar { background: var(--jav-brand-grad); border-radius: 999px; }
+
+                    #JavOrganizerConfigPage .jav-state { font-size: 13.5px; line-height: 1.55; margin-top: 13px; font-variant-numeric: tabular-nums; color: var(--jav-text); letter-spacing: -.01em; }
+                    #JavOrganizerConfigPage .jav-ticker { font-family: var(--jav-mono); font-size: 11.5px; color: var(--jav-text-2); margin-top: 8px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+                    #JavOrganizerConfigPage .jav-ticker::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--jav-accent); box-shadow: 0 0 8px var(--jav-accent); animation: jav-pulse 1.4s ease-in-out infinite; }
+                    @keyframes jav-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.72); } }
+                    #JavOrganizerConfigPage .jav-note { font-size: 12.5px; line-height: 1.5; color: var(--jav-text-2); margin-top: 8px; min-height: 1em; }
+
+                    #JavOrganizerConfigPage .u-ok { color: var(--jav-green) !important; }
+                    #JavOrganizerConfigPage .u-warn { color: var(--jav-orange) !important; }
+                    #JavOrganizerConfigPage .u-danger { color: var(--jav-red) !important; }
+
+                    /* ---------- iOS-style toggles ---------- */
+                    #JavOrganizerConfigPage .jav-togglegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2px 30px; }
+                    #JavOrganizerConfigPage .jav-toggle { display: flex; align-items: flex-start; gap: 14px; padding: 11px 0; cursor: pointer; position: relative; }
+                    #JavOrganizerConfigPage .jav-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+                    #JavOrganizerConfigPage .jav-switch {
+                        flex: none; width: 46px; height: 28px; border-radius: 999px;
+                        background: var(--jav-glass-field); border: 1px solid var(--jav-glass-hairline);
+                        position: relative; margin-top: 1px;
+                        box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08);
+                        transition: background-color .25s, border-color .25s;
+                    }
+                    #JavOrganizerConfigPage .jav-switch::after {
+                        content: ""; position: absolute; top: 2px; left: 2px;
+                        width: 22px; height: 22px; border-radius: 50%;
+                        background: #fff; box-shadow: 0 2px 5px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .9);
+                        transition: transform .25s cubic-bezier(.2, .7, .2, 1);
+                    }
+                    #JavOrganizerConfigPage .jav-toggle input:checked ~ .jav-switch { background: var(--jav-green); border-color: transparent; }
+                    #JavOrganizerConfigPage .jav-toggle input:checked ~ .jav-switch::after { transform: translateX(18px); }
+                    #JavOrganizerConfigPage .jav-toggle input:focus-visible ~ .jav-switch { outline: 2px solid var(--jav-accent); outline-offset: 2px; }
+                    #JavOrganizerConfigPage .jav-toggle-copy { min-width: 0; }
+                    #JavOrganizerConfigPage .jav-toggle-name { display: block; font-size: 14px; font-weight: 550; line-height: 1.35; color: var(--jav-text); letter-spacing: -.01em; }
+                    #JavOrganizerConfigPage .jav-toggle-desc { display: block; font-size: 12px; line-height: 1.45; color: var(--jav-text-3); margin-top: 2px; }
+
+                    /* ---------- fields ---------- */
+                    #JavOrganizerConfigPage .jav-fieldgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px 26px; }
+                    #JavOrganizerConfigPage .jav-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--jav-text); letter-spacing: -.01em; }
+                    #JavOrganizerConfigPage .jav-inputwrap { position: relative; }
+                    #JavOrganizerConfigPage .jav-inputwrap input,
+                    #JavOrganizerConfigPage select.jav-select {
+                        font: inherit; font-size: 14.5px; color: var(--jav-text);
+                        width: 100%; box-sizing: border-box;
+                        background: var(--jav-glass-field);
+                        border: 1px solid var(--jav-glass-hairline);
+                        border-radius: 13px; padding: 11px 14px;
+                        box-shadow: inset 0 1px 0 var(--jav-specular);
+                        transition: border-color .18s, background-color .18s, box-shadow .18s;
+                    }
+                    #JavOrganizerConfigPage .jav-inputwrap input:hover,
+                    #JavOrganizerConfigPage select.jav-select:hover { border-color: var(--jav-glass-border); }
+                    #JavOrganizerConfigPage .jav-inputwrap input:focus,
+                    #JavOrganizerConfigPage select.jav-select:focus {
+                        outline: none; border-color: var(--jav-accent);
+                        background: var(--jav-glass-strong);
+                        box-shadow: 0 0 0 4px var(--jav-accent-soft);
+                    }
+                    #JavOrganizerConfigPage .jav-inputwrap input::placeholder { color: var(--jav-text-3); }
+                    #JavOrganizerConfigPage .jav-inputwrap input[type="number"] { font-variant-numeric: tabular-nums; padding-right: 62px; }
+                    #JavOrganizerConfigPage .jav-inputwrap input[type="number"]::-webkit-inner-spin-button,
+                    #JavOrganizerConfigPage .jav-inputwrap input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+                    #JavOrganizerConfigPage .jav-inputwrap input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+                    #JavOrganizerConfigPage .jav-unit {
+                        position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+                        font-family: var(--jav-mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+                        color: var(--jav-text-3); pointer-events: none;
+                    }
+                    #JavOrganizerConfigPage select.jav-select {
+                        appearance: none; -webkit-appearance: none; -moz-appearance: none; padding-right: 38px;
+                        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%2386868b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+                        background-repeat: no-repeat; background-position: right 14px center; cursor: pointer;
+                    }
+                    #JavOrganizerConfigPage select.jav-select option { color: #1d1d1f; background: #ffffff; }
+                    #JavOrganizerConfigPage .jav-hint { font-size: 12px; line-height: 1.5; color: var(--jav-text-3); margin: 9px 0 0; }
+                    #JavOrganizerConfigPage .jav-hint b { color: var(--jav-text-2); font-weight: 600; }
+
+                    /* ---------- site status ---------- */
+                    #JavOrganizerConfigPage .jav-sitebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 13px; }
+                    #JavOrganizerConfigPage .jav-sitestats { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--jav-text-2); }
+                    #JavOrganizerConfigPage .jav-sitegrid { display: flex; flex-wrap: wrap; gap: 8px; }
+                    #JavOrganizerConfigPage .jav-sitepill {
+                        display: inline-flex; align-items: center; gap: 8px;
+                        font-size: 12px; padding: 6px 13px; border-radius: 999px;
+                        background: var(--jav-glass-field); border: 1px solid var(--jav-glass-hairline);
+                        box-shadow: inset 0 1px 0 var(--jav-specular);
+                        color: var(--jav-text); white-space: nowrap;
+                    }
+                    #JavOrganizerConfigPage .jav-sitepill i { width: 6px; height: 6px; border-radius: 50%; background: var(--jav-green); flex: none; box-shadow: 0 0 6px var(--jav-green); }
+                    #JavOrganizerConfigPage .jav-sitepill em { font-style: normal; font-size: 10.5px; color: var(--jav-text-3); }
+                    #JavOrganizerConfigPage .jav-sitepill.is-warn { border-color: var(--jav-orange); }
+                    #JavOrganizerConfigPage .jav-sitepill.is-warn i { background: var(--jav-orange); box-shadow: 0 0 6px var(--jav-orange); }
+                    #JavOrganizerConfigPage .jav-sitepill.is-warn em { color: var(--jav-orange); }
+
+                    /* ---------- floating save bar ---------- */
+                    #JavOrganizerConfigPage .jav-savebar {
+                        position: sticky; bottom: 8px; z-index: 30;
+                        display: flex; align-items: center; gap: 14px;
+                        padding: 12px 14px; margin-top: 10px; border-radius: 22px;
+                        background-color: var(--jav-glass);
+                        background-image: var(--jav-sheen);
+                        -webkit-backdrop-filter: var(--jav-blur);
+                        backdrop-filter: var(--jav-blur);
+                        border: 1px solid var(--jav-glass-border);
+                        box-shadow: inset 0 1px 0 var(--jav-specular), var(--jav-shadow);
+                    }
+                    #JavOrganizerConfigPage .jav-savebar .jav-note { flex: 1; margin: 0; min-width: 0; }
+                    #JavOrganizerConfigPage .jav-dirty { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--jav-orange); white-space: nowrap; }
+                    #JavOrganizerConfigPage .jav-dirty::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--jav-orange); box-shadow: 0 0 6px var(--jav-orange); }
+                    #JavOrganizerConfigPage .jav-dirty[hidden] { display: none; }
+                    #JavOrganizerConfigPage .jav-save { flex: none; min-width: 150px; }
+
+                    /* ---------- responsive ---------- */
+                    @media (max-width: 720px) {
+                        #JavOrganizerConfigPage .jav-app { padding: 18px 15px 14px; border-radius: 24px; }
+                        #JavOrganizerConfigPage .jav-tab { flex: none; padding: 8px 14px; }
+                        #JavOrganizerConfigPage .jav-card { padding: 18px 17px; border-radius: 22px; }
+                        #JavOrganizerConfigPage .jav-savebar { flex-wrap: wrap; }
+                        #JavOrganizerConfigPage .jav-save { flex: 1; }
+                        #JavOrganizerConfigPage .jav-title { font-size: 21px; }
+                    }
+
+                    @media (prefers-reduced-motion: reduce) {
+                        #JavOrganizerConfigPage *, #JavOrganizerConfigPage *::before, #JavOrganizerConfigPage *::after {
+                            animation: none !important;
+                            transition: none !important;
+                        }
+                    }
+                </style>
+
+                <div class="jav-app">
+                    <div class="jav-ambient" aria-hidden="true">
+                        <span class="jav-orb jav-orb-a"></span>
+                        <span class="jav-orb jav-orb-b"></span>
+                        <span class="jav-orb jav-orb-c"></span>
+                    </div>
+                    <div class="jav-shell">
+                        <header class="jav-head">
+                            <div class="jav-brand">
+                                <span class="jav-mark" aria-hidden="true">
+                                    <img src="data:image/png;base64,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" alt="" width="48" height="48">
+                                </span>
+                                <div>
+                                    <div class="jav-title">JavOrganizer</div>
+                                    <div class="jav-sub">Metadata engine · 19 sources</div>
+                                </div>
+                            </div>
+                            <div class="jav-head-meta">
+                                <div class="jav-theme" role="group" aria-label="Color theme">
+                                    <button type="button" class="jav-theme-btn" data-theme="auto" aria-pressed="true" title="Follow system theme">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                                    </button>
+                                    <button type="button" class="jav-theme-btn" data-theme="light" aria-pressed="false" title="Light theme">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                                    </button>
+                                    <button type="button" class="jav-theme-btn" data-theme="dark" aria-pressed="false" title="Dark theme">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                                    </button>
+                                </div>
+                                <span class="jav-engine" id="JavEnginePill"><i></i><span id="JavEngineText">starting…</span></span>
+                            </div>
+                        </header>
+
+                        <nav class="jav-tabbar jav-scroll" role="tablist" aria-label="Settings sections">
+                            <button type="button" class="jav-tab is-active" role="tab" id="jav-tab-scan" data-panel="jav-panel-scan" aria-controls="jav-panel-scan" aria-selected="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                                <span>Scan</span>
+                            </button>
+                            <button type="button" class="jav-tab" role="tab" id="jav-tab-sites" data-panel="jav-panel-sites" aria-controls="jav-panel-sites" aria-selected="false" tabindex="-1">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+                                <span>Sites</span>
+                            </button>
+                            <button type="button" class="jav-tab" role="tab" id="jav-tab-engine" data-panel="jav-panel-engine" aria-controls="jav-panel-engine" aria-selected="false" tabindex="-1">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
+                                <span>Engine</span>
+                            </button>
+                            <button type="button" class="jav-tab" role="tab" id="jav-tab-cache" data-panel="jav-panel-cache" aria-controls="jav-panel-cache" aria-selected="false" tabindex="-1">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+                                <span>Cache</span>
+                            </button>
+                            <button type="button" class="jav-tab" role="tab" id="jav-tab-collections" data-panel="jav-panel-collections" aria-controls="jav-panel-collections" aria-selected="false" tabindex="-1">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                                <span>Collections</span>
+                            </button>
+                            <button type="button" class="jav-tab" role="tab" id="jav-tab-solver" data-panel="jav-panel-solver" aria-controls="jav-panel-solver" aria-selected="false" tabindex="-1">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z"/></svg>
+                                <span>FlareSolverr</span>
+                            </button>
+                        </nav>
+
+                        <!-- novalidate: the browser's own validation must never block
+                             the save, because a blocked submit fails silently and the
+                             server clamps every value anyway. -->
+                        <form id="JavOrganizerConfigForm" class="jav-main" novalidate>
+
+                            <!-- ================= 01 · Library scan ================= -->
+                            <section class="jav-panel is-active" id="jav-panel-scan" role="tabpanel" aria-labelledby="jav-tab-scan">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Library</span>
+                                    <h2 class="jav-panel-title">Library scan</h2>
+                                    <p class="jav-panel-desc">Fills videos that are missing metadata, stuck at title-only, or still showing a Japanese title. Also runs automatically at server start, every 6 hours, and when new files appear.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-actions">
+                                        <button type="button" id="ScanNowButton" class="jav-btn jav-btn-primary"><span>Scan Library Now</span></button>
+                                        <button type="button" id="DeepScanButton" class="jav-btn jav-btn-ghost"><span>Deep Re-scrape Everything</span></button>
+                                    </div>
+                                    <div style="margin-top: 12px;">
+                                        <button type="button" id="CancelScanButton" class="jav-btn jav-btn-danger" style="display: none;"><span>Cancel Scan</span></button>
+                                    </div>
+
+                                    <div class="jav-progress">
+                                        <progress id="ScanProgressBar" max="100" value="0" style="display: none;"></progress>
+                                        <div class="jav-state" id="ScanState" aria-live="polite">Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now.</div>
+                                        <div class="jav-ticker" id="ScanCurrent" style="display: none;"></div>
+                                        <div class="jav-note" id="ScanStatus" aria-live="polite"></div>
+                                    </div>
+
+                                    <p class="jav-hint" style="margin-top: 16px;"><b>Deep Re-scrape Everything</b> purges each item's cache and re-fetches every video from the sites — use it after adding sites or upgrading.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <label class="jav-toggle">
+                                        <input type="checkbox" id="AutoScanOnStartup" name="AutoScanOnStartup">
+                                        <span class="jav-switch" aria-hidden="true"></span>
+                                        <span class="jav-toggle-copy">
+                                            <span class="jav-toggle-name">Auto-scan on server start</span>
+                                            <span class="jav-toggle-desc">A scheduled task (every 6 hours) also picks up files added or failed later — Dashboard → Scheduled Tasks → "Scan JavOrganizer Library".</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </section>
+
+                            <!-- ================= 02 · Scraping sites ================= -->
+                            <section class="jav-panel" id="jav-panel-sites" role="tabpanel" aria-labelledby="jav-tab-sites">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Sources</span>
+                                    <h2 class="jav-panel-title">Scraping sites</h2>
+                                    <p class="jav-panel-desc">Metadata is merged from every enabled site, richest sources first. JavLibrary is always on as the primary source; banned or unreachable sites are skipped automatically and the next site takes their slot.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-fieldgrid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 320px));">
+                                        <div>
+                                            <label class="jav-label" for="Language">Language</label>
+                                            <select id="Language" name="Language" class="jav-select">
+                                                <option value="en">English (en)</option>
+                                                <option value="ja">日本語 (ja)</option>
+                                                <option value="zh">中文 (zh)</option>
+                                                <option value="tw">中文（繁體）(tw)</option>
+                                            </select>
+                                            <p class="jav-hint">Language path segment used on the sites — affects scraped titles and genres.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-sitebar">
+                                        <div class="jav-sitestats" id="SiteStatusSummary">Loading site states…</div>
+                                    </div>
+                                    <div class="jav-sitegrid" id="SiteStatusList"></div>
+                                    <p class="jav-hint" style="margin-top: 14px;"><b>active</b> sites are scraped now · <b>banned</b> sites cool off for 6 hours after the site complained · <b>unreachable</b> sites are skipped for 30–60 minutes. All recover automatically.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-sitebar">
+                                        <div class="jav-grouplabel" style="margin: 0;">Primary sources</div>
+                                        <div>
+                                            <button type="button" class="jav-linkbtn" id="JavSitesAllOn">All on</button>
+                                            <button type="button" class="jav-linkbtn" id="JavSitesAllOff">All off</button>
+                                        </div>
+                                    </div>
+                                    <div class="jav-togglegrid">
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavDb" name="UseJavDb">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy">
+                                                <span class="jav-toggle-name">JavDB</span>
+                                                <span class="jav-toggle-desc">Gender-separated cast. Bans IPs aggressively — the plugin detects bans and backs off automatically.</span>
+                                            </span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavBus" name="UseJavBus">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy">
+                                                <span class="jav-toggle-name">JavBus</span>
+                                                <span class="jav-toggle-desc">Fast second source for covers and previews. Serves pages directly with an age cookie and rarely blocks.</span>
+                                            </span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseMissAv" name="UseMissAv">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy">
+                                                <span class="jav-toggle-name">MissAV</span>
+                                                <span class="jav-toggle-desc">Labels Actress and Actor explicitly — a gender-aware source.</span>
+                                            </span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseMissAvMirror" name="UseMissAvMirror">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy">
+                                                <span class="jav-toggle-name">MissAV mirror (missav.ai)</span>
+                                                <span class="jav-toggle-desc">The same site on its mirror domain — resilience when missav.ws is blocked or down.</span>
+                                            </span>
+                                        </label>
+                                    </div>
+
+                                    <div class="jav-grouplabel">Catalog sites</div>
+                                    <div class="jav-togglegrid">
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseOneJav" name="UseOneJav">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">OneJAV</span><span class="jav-toggle-desc">Covers, release dates and cast from per-code pages.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseFanza" name="UseFanza">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">FANZA / DMM digital</span><span class="jav-toggle-desc">The official Japanese catalog — richest data. Sometimes blocks non-Japanese IPs; blocked sites are skipped.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseFanzaDvd" name="UseFanzaDvd">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">FANZA DVD catalog</span><span class="jav-toggle-desc">The physical-DMM side of FANZA — an independent second page per code.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavLand" name="UseJavLand">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavLand</span><span class="jav-toggle-desc">JavBus-family per-code pages — a fast direct source.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="Use123Av" name="Use123Av">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">123AV</span><span class="jav-toggle-desc">MissAV-template site with gender-labeled Actress/Actor fields.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseSextb" name="UseSextb">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">SEXTB</span><span class="jav-toggle-desc">Per-code streaming pages with cover and cast.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseSupJav" name="UseSupJav">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">SupJav</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavGg" name="UseJavGg">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavGG</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavSeen" name="UseJavSeen">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavSeen</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavMix" name="UseJavMix">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavMix</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavQuick" name="UseJavQuick">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavQuick</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavTube" name="UseJavTube">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">JavTube</span><span class="jav-toggle-desc">WordPress-style search; fills title, cover, date and categories.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseJavGuru" name="UseJavGuru">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">jav.guru</span><span class="jav-toggle-desc">Gender-separated cast and English titles — also refines the collections' gender split.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="UseMgstage" name="UseMgstage">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">MGStage</span><span class="jav-toggle-desc">The official store for amateur labels (SIRO etc.).</span></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- ================= 03 · Engine ================= -->
+                            <section class="jav-panel" id="jav-panel-engine" role="tabpanel" aria-labelledby="jav-tab-engine">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Throughput</span>
+                                    <h2 class="jav-panel-title">Speed &amp; politeness</h2>
+                                    <p class="jav-panel-desc">How hard the engine works the sites. The defaults are polite; raise them only if your setup tolerates more traffic.</p>
+                                </div>
+                                <div class="jav-card">
+                                    <div class="jav-fieldgrid">
+                                        <div>
+                                            <label class="jav-label" for="MaxConcurrentScrapes">Parallel scrapes</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="MaxConcurrentScrapes" name="MaxConcurrentScrapes" type="number" min="1" max="32" step="1" inputmode="numeric">
+                                                <span class="jav-unit">videos</span>
+                                            </div>
+                                            <p class="jav-hint">Videos scraped at the same time during scans. Default 4; capped at 32.</p>
+                                        </div>
+                                        <div>
+                                            <label class="jav-label" for="MaxSitesPerScrape">Sites per video</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="MaxSitesPerScrape" name="MaxSitesPerScrape" type="number" min="1" max="20" step="1" inputmode="numeric">
+                                                <span class="jav-unit">sites</span>
+                                            </div>
+                                            <p class="jav-hint">Enabled sites scraped at once per video, richest first. Default 8. More sites = fuller metadata and fewer requests per single site.</p>
+                                        </div>
+                                        <div>
+                                            <label class="jav-label" for="RequestDelayMs">Request spacing</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="RequestDelayMs" name="RequestDelayMs" type="number" min="0" step="1" inputmode="numeric">
+                                                <span class="jav-unit">ms</span>
+                                            </div>
+                                            <p class="jav-hint">Minimum pause between requests to the same site, randomly jittered. Default 500; 0 disables.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- ================= 04 · Cache ================= -->
+                            <section class="jav-panel" id="jav-panel-cache" role="tabpanel" aria-labelledby="jav-tab-cache">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Storage</span>
+                                    <h2 class="jav-panel-title">Cache</h2>
+                                    <p class="jav-panel-desc">Scraped records are kept on disk so scans stay cheap and the sites are not asked twice.</p>
+                                </div>
+                                <div class="jav-card">
+                                    <div class="jav-fieldgrid">
+                                        <div>
+                                            <label class="jav-label" for="CacheHours">Successful-scrape cache</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="CacheHours" name="CacheHours" type="number" min="0" step="1" inputmode="numeric">
+                                                <span class="jav-unit">hours</span>
+                                            </div>
+                                            <p class="jav-hint">How long a scraped video stays fresh before the next scan re-fetches it. Default 720 (30 days); 0 disables expiry.</p>
+                                        </div>
+                                        <div>
+                                            <label class="jav-label" for="NegativeCacheHours">Not-found cache</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="NegativeCacheHours" name="NegativeCacheHours" type="number" min="0" step="1" inputmode="numeric">
+                                                <span class="jav-unit">hours</span>
+                                            </div>
+                                            <p class="jav-hint">How long an unmatched code is remembered so re-scans skip it. Default 168 (7 days); 0 disables.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- ================= 05 · Collections ================= -->
+                            <section class="jav-panel" id="jav-panel-collections" role="tabpanel" aria-labelledby="jav-tab-collections">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Library cards</span>
+                                    <h2 class="jav-panel-title">Collections</h2>
+                                    <p class="jav-panel-desc">A daily task organizes the scraped library into browse cards — one per person, with their photo as the poster, plus ranked Most Viewed / Most Liked collections.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <label class="jav-toggle">
+                                        <input type="checkbox" id="BuildCollections" name="BuildCollections">
+                                        <span class="jav-switch" aria-hidden="true"></span>
+                                        <span class="jav-toggle-copy">
+                                            <span class="jav-toggle-name">Build collections</span>
+                                            <span class="jav-toggle-desc">Per actress/actor collections plus the two ranked collections from your library's play and like history.</span>
+                                        </span>
+                                    </label>
+
+                                    <div class="jav-togglegrid" style="margin-top: 6px;">
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildStudioCollections" name="BuildStudioCollections">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">Also by studio</span><span class="jav-toggle-desc">"Studio: …" collections.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildGenreCollections" name="BuildGenreCollections">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">Also by genre</span><span class="jav-toggle-desc">"Genre: …" collections.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildYearCollections" name="BuildYearCollections">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">Also by year</span><span class="jav-toggle-desc">"Year: …" collections.</span></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-fieldgrid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 320px));">
+                                        <div>
+                                            <label class="jav-label" for="MinVideosPerCollection">Min videos per person</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="MinVideosPerCollection" name="MinVideosPerCollection" type="number" min="1" step="1" inputmode="numeric">
+                                                <span class="jav-unit">videos</span>
+                                            </div>
+                                            <p class="jav-hint">A person gets their own collection only when they appear in at least this many scraped videos. Default 2.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- ================= 06 · FlareSolverr ================= -->
+                            <section class="jav-panel" id="jav-panel-solver" role="tabpanel" aria-labelledby="jav-tab-solver">
+                                <div class="jav-panel-head">
+                                    <span class="jav-eyebrow">Cloudflare</span>
+                                    <h2 class="jav-panel-title">FlareSolverr</h2>
+                                    <p class="jav-panel-desc">Optional Cloudflare bypass. Point at a remote/Docker instance, or let the plugin manage a local one on Windows, macOS or Linux.</p>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-note" id="FlareSolverrStatus" style="margin-top: 0;">Not tested yet.</div>
+                                    <div style="margin: 14px 0 4px;">
+                                        <button type="button" id="TestFlareSolverrButton" class="jav-btn jav-btn-ghost"><span>Test FlareSolverr Connection</span></button>
+                                    </div>
+                                </div>
+
+                                <div class="jav-card">
+                                    <div class="jav-fieldgrid">
+                                        <div>
+                                            <label class="jav-label" for="FlareSolverrUrl">FlareSolverr URL</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="FlareSolverrUrl" name="FlareSolverrUrl" type="text" placeholder="http://localhost:8191/v1" autocomplete="off" spellcheck="false">
+                                            </div>
+                                            <p class="jav-hint">Base URL of the instance used when Cloudflare blocks the server. Leave empty to disable the fallback.</p>
+                                        </div>
+                                        <div>
+                                            <label class="jav-label" for="FlaresolverrExecutablePath">Executable path</label>
+                                            <div class="jav-inputwrap">
+                                                <input id="FlaresolverrExecutablePath" name="FlaresolverrExecutablePath" type="text" placeholder="path/to/flaresolverr" autocomplete="off" spellcheck="false">
+                                            </div>
+                                            <p class="jav-hint">Optional, any OS. The plugin starts this FlareSolverr with Jellyfin and stops it on shutdown (on macOS/Linux the file must be executable). Leave empty to use a remote/Docker instance or none.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <div class="jav-savebar">
+                                <span class="jav-dirty" id="JavDirtyDot" hidden>Unsaved changes</span>
+                                <span class="jav-note" id="ConfigStatus" aria-live="polite"></span>
+                                <button type="submit" class="jav-btn jav-btn-primary jav-save"><span>Save Settings</span></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <script type="text/javascript">
+                    var JavOrganizerConfig = {
+                        pluginUniqueId: 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
+                    };
+
+                    var scanStateTimer = null;
+                    var siteStateTimer = null;
+
+                    // ---- theme: Auto / Light / Dark, persisted ----
+                    // "auto" is resolved by a CSS media query, so it tracks the OS
+                    // live without any JS listener. light/dark are forced.
+                    (function () {
+                        var root = document.getElementById('JavOrganizerConfigPage');
+                        var buttons = Array.prototype.slice.call(document.querySelectorAll('#JavOrganizerConfigPage .jav-theme-btn'));
+                        function current() {
+                            try {
+                                var t = localStorage.getItem('jav-theme');
+                                return (t === 'light' || t === 'dark') ? t : 'auto';
+                            } catch (e) { return 'auto'; }
+                        }
+                        function apply(pref) {
+                            root.setAttribute('data-jav-theme', pref);
+                            buttons.forEach(function (b) {
+                                b.setAttribute('aria-pressed', b.getAttribute('data-theme') === pref ? 'true' : 'false');
+                            });
+                        }
+                        buttons.forEach(function (b) {
+                            b.addEventListener('click', function () {
+                                var pref = b.getAttribute('data-theme');
+                                try { localStorage.setItem('jav-theme', pref); } catch (e) { /* ignore */ }
+                                apply(pref);
+                            });
+                        });
+                        apply(current());
+                    })();
+
+                    // ---- semantic tone helper (theme-aware, no inline colors) ----
+                    function tone(el, kind) {
+                        if (!el) { return; }
+                        el.classList.remove('u-ok', 'u-warn', 'u-danger');
+                        if (kind) { el.classList.add(kind); }
+                    }
+
+                    // The Jellyfin 12.x web client has no AMD loader, so loading a
+                    // module through it throws there and takes the rest of the handler
+                    // with it. Put the message on the page instead, which works everywhere.
+                    function setStatus(elementId, message, isError) {
+                        var el = document.querySelector(elementId);
+                        if (!el) { return; }
+                        el.textContent = message;
+                        tone(el, isError ? 'u-warn' : 'u-ok');
+                    }
+
+                    function siteStatusText(reason, retryAt) {
+                        if (reason === 'banned') {
+                            return 'banned — cooling off' + (retryAt ? ' until retry' : '');
+                        }
+                        if (reason === 'unreachable') {
+                            return 'unreachable — retrying later' + (retryAt ? ' until retry' : '');
+                        }
+                        return 'active';
+                    }
+
+                    // Site names come from the server; escape them before they reach
+                    // innerHTML so a scraped site name can never inject markup.
+                    function escapeHtml(value) {
+                        return String(value === null || value === undefined ? '' : value)
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;');
+                    }
+
+                    function updateSiteStatus() {
+                        // dataType:'json' is required: without it ApiClient.ajax
+                        // resolves to the raw fetch Response and every field read off
+                        // the payload is undefined.
+                        ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Sites/State'), dataType: 'json' }).then(function (data) {
+                            var list = document.querySelector('#SiteStatusList');
+                            var summary = document.querySelector('#SiteStatusSummary');
+                            if (!list || !data || !data.sites) { return; }
+
+                            var active = 0, banned = 0, unreachable = 0, disabled = 0;
+                            var html = '';
+                            data.sites.forEach(function (s) {
+                                // Disabled sites are counted, but only the sites that
+                                // actually participate are listed — a wall of grey
+                                // "disabled" rows buries the ones that matter.
+                                if (!s.enabled) { disabled++; return; }
+                                if (s.reason === 'banned') { banned++; }
+                                else if (s.reason === 'unreachable') { unreachable++; }
+                                else { active++; }
+
+                                var warn = s.reason ? ' is-warn' : '';
+                                html += '<span class="jav-sitepill' + warn + '"><i></i>' + escapeHtml(s.name) +
+                                    ' <em>' + escapeHtml(siteStatusText(s.reason, s.retryAt)) + '</em></span>';
+                            });
+
+                            list.innerHTML = html;
+                            var parts = [];
+                            if (active) { parts.push(active + ' active'); }
+                            if (banned) { parts.push(banned + ' banned'); }
+                            if (unreachable) { parts.push(unreachable + ' unreachable'); }
+                            if (disabled) { parts.push(disabled + ' disabled in settings'); }
+                            summary.textContent = parts.length ? parts.join(' · ') : 'No sites enabled.';
+
+                            // Mirror the headline into the header pill so the engine's
+                            // state is visible from every section.
+                            var pill = document.querySelector('#JavEnginePill');
+                            var pillText = document.querySelector('#JavEngineText');
+                            if (pill && pillText) {
+                                pillText.textContent = active + ' of ' + (active + banned + unreachable) + ' sites active';
+                                pill.className = 'jav-engine' + ((banned || unreachable) ? ' is-warn' : '');
+                            }
+                        }, function () {
+                            // The panel is decoration; a failed read must not raise an
+                            // unhandled rejection or wipe what is already shown.
+                        });
+                    }
+
+                    function testFlareSolverr() {
+                        var btn = document.querySelector('#TestFlareSolverrButton');
+                        var out = document.querySelector('#FlareSolverrStatus');
+                        btn.disabled = true;
+                        btn.querySelector('span').textContent = 'Testing…';
+                        ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/FlareSolverr/Health'), dataType: 'json' }).then(function (r) {
+                            btn.disabled = false;
+                            btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
+                            if (!r.configured) {
+                                tone(out, 'u-warn');
+                                out.textContent = 'No FlareSolverr URL is configured. Sites behind Cloudflare will not be bypassed.';
+                            } else if (r.healthy) {
+                                tone(out, 'u-ok');
+                                out.textContent = '✓ ' + r.message;
+                            } else {
+                                tone(out, 'u-warn');
+                                out.textContent = '✗ ' + r.message;
+                            }
+                        }, function () {
+                            btn.disabled = false;
+                            btn.querySelector('span').textContent = 'Test FlareSolverr Connection';
+                            tone(out, 'u-warn');
+                            out.textContent = 'Could not reach the Jellyfin API for the test.';
+                        });
+                    }
+
+                    document.querySelector('#TestFlareSolverrButton')
+                        .addEventListener('click', testFlareSolverr);
+
+                    function setScanButtons(running) {
+                        var scanBtn = document.querySelector('#ScanNowButton');
+                        var deepBtn = document.querySelector('#DeepScanButton');
+                        var cancelBtn = document.querySelector('#CancelScanButton');
+                        if (running) {
+                            scanBtn.disabled = true;
+                            deepBtn.disabled = true;
+                            cancelBtn.style.display = '';
+                            cancelBtn.disabled = false;
+                        } else {
+                            scanBtn.disabled = false;
+                            deepBtn.disabled = false;
+                            cancelBtn.style.display = 'none';
+                            cancelBtn.disabled = false;
+                            scanBtn.querySelector('span').textContent = 'Scan Library Now';
+                            deepBtn.querySelector('span').textContent = 'Deep Re-scrape Everything';
+                        }
+                    }
+
+                    // The scan state is polled every 1.5s while a pass runs: the
+                    // endpoint is a cheap in-memory read, so a live indicator costs
+                    // the server almost nothing.
+                    var scanPollMs = 1500;
+
+                    function updateScanState() {
+                        // dataType:'json' is required: without it ApiClient.ajax
+                        // resolves to the raw fetch Response rather than the parsed
+                        // body, so the progress indicator could never appear.
+                        ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JavOrganizer/Scan/State'), dataType: 'json' }).then(function (state) {
+                            var el = document.querySelector('#ScanState');
+                            var bar = document.querySelector('#ScanProgressBar');
+                            if (!state) {
+                                return;
+                            }
+
+                            setScanButtons(state.running);
+                            if (state.running) {
+                                var done = state.completed || 0;
+                                var total = state.totalPending || 0;
+                                var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+                                // Elapsed + estimated remaining, so a slow batch never looks frozen.
+                                var elapsedText = '';
+                                if (state.startedAt) {
+                                    var startMs = Date.parse(state.startedAt);
+                                    var elapsedMs = startMs > 0 ? Date.now() - startMs : 0;
+                                    if (elapsedMs > 0 && elapsedMs < 7 * 24 * 3600 * 1000) {
+                                        var eMin = Math.floor(elapsedMs / 60000);
+                                        var eSec = Math.floor((elapsedMs % 60000) / 1000);
+                                        elapsedText = eMin > 0 ? eMin + 'm ' + eSec + 's' : eSec + 's';
+                                        if (done > 0) {
+                                            var perItemMs = elapsedMs / done;
+                                            var remainMin = Math.round(perItemMs * (total - done) / 60000);
+                                            elapsedText += ' elapsed' + (remainMin >= 1 ? ', ~' + remainMin + ' min left' : '');
+                                        }
+                                    }
+                                }
+
+                                var mode = state.deep ? 'Deep re-scrape' : 'Scan';
+                                var pacing = (state.pacingMultiplier && state.pacingMultiplier > 1.1)
+                                    ? ' · pacing ' + state.pacingMultiplier + '× (easing off)' : '';
+                                el.textContent = mode + ' running · ' +
+                                    done + ' / ' + total + ' videos (' + pct + '%) — ' +
+                                    (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
+                                    ' still missing' + (elapsedText ? ' · ' + elapsedText : '') + pacing;
+                                tone(el, null);
+
+                                // What a worker is on right now, so a long pass reads
+                                // as moving rather than frozen.
+                                var cur = document.querySelector('#ScanCurrent');
+                                if (cur) {
+                                    if (state.current) {
+                                        var now = String(state.current);
+                                        cur.textContent = 'Now scraping: ' + (now.length > 90 ? now.slice(0, 90) + '…' : now);
+                                        cur.style.display = '';
+                                    } else {
+                                        cur.textContent = '';
+                                        cur.style.display = 'none';
+                                    }
+                                }
+
+                                if (bar) {
+                                    bar.style.display = '';
+                                    bar.max = total > 0 ? total : 1;
+                                    bar.value = done;
+                                }
+
+                                var btnLabel = 'Scanning… ' + pct + '%';
+                                document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
+                                document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
+                                if (!scanStateTimer) {
+                                    scanStateTimer = setInterval(updateScanState, scanPollMs);
+                                }
+                            } else {
+                                if (scanStateTimer) {
+                                    clearInterval(scanStateTimer);
+                                    scanStateTimer = null;
+                                }
+                                if (bar) {
+                                    bar.style.display = 'none';
+                                    bar.value = 0;
+                                }
+                                var cur2 = document.querySelector('#ScanCurrent');
+                                if (cur2) {
+                                    cur2.textContent = '';
+                                    cur2.style.display = 'none';
+                                }
+
+                                if ((state.completed || 0) > 0) {
+                                    tone(el, 'u-ok');
+                                    el.textContent = '✓ Last scan: ' + (state.completed || 0) + ' processed, ' +
+                                        (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
+                                        ' still without metadata.';
+                                } else {
+                                    tone(el, null);
+                                    el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now. Deep Re-scrape purges the cache and re-scrapes everything.';
                                 }
                             }
-                        }
-
-                        var mode = state.deep ? 'Deep re-scrape' : 'Scan';
-                        var pacing = (state.pacingMultiplier && state.pacingMultiplier > 1.1)
-                            ? ' · pacing ' + state.pacingMultiplier + '× (easing off)' : '';
-                        el.textContent = mode + ' running · ' +
-                            done + ' / ' + total + ' videos (' + pct + '%) — ' +
-                            (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
-                            ' still missing' + (elapsedText ? ' · ' + elapsedText : '') + pacing;
-                        el.style.color = '';
-
-                        // What a worker is on right now, so a long pass reads
-                        // as moving rather than frozen.
-                        var cur = document.querySelector('#ScanCurrent');
-                        if (cur) {
-                            if (state.current) {
-                                var now = String(state.current);
-                                cur.textContent = 'Now scraping: ' + (now.length > 90 ? now.slice(0, 90) + '…' : now);
-                                cur.style.display = '';
-                            } else {
-                                cur.textContent = '';
-                                cur.style.display = 'none';
+                        }, function (err) {
+                            // A failed read must never end the indicator. The scan
+                            // keeps running on the server, and the page recovers by
+                            // itself as soon as a read succeeds again. The usual cause
+                            // is a session that expired or a server restart, so say
+                            // that instead of telling the user to reload - reloading
+                            // does not help when the session is gone.
+                            if (!scanStateTimer) {
+                                scanStateTimer = setInterval(updateScanState, scanPollMs);
                             }
-                        }
 
-                        if (bar) {
-                            bar.style.display = '';
-                            bar.max = total > 0 ? total : 1;
-                            bar.value = done;
-                        }
-
-                        var btnLabel = 'Scanning… ' + pct + '%';
-                        document.querySelector('#ScanNowButton').querySelector('span').textContent = btnLabel;
-                        document.querySelector('#DeepScanButton').querySelector('span').textContent = btnLabel;
-                        if (!scanStateTimer) {
-                            scanStateTimer = setInterval(updateScanState, scanPollMs);
-                        }
-                    } else {
-                        if (scanStateTimer) {
-                            clearInterval(scanStateTimer);
-                            scanStateTimer = null;
-                        }
-                        if (bar) {
-                            bar.style.display = 'none';
-                            bar.value = 0;
-                        }
-                        var cur2 = document.querySelector('#ScanCurrent');
-                        if (cur2) {
-                            cur2.textContent = '';
-                            cur2.style.display = 'none';
-                        }
-
-                        if ((state.completed || 0) > 0) {
-                            el.style.color = '#4caf50';
-                            el.textContent = '✓ Last scan: ' + (state.completed || 0) + ' processed, ' +
-                                (state.refreshed || 0) + ' scraped, ' + (state.stillMissing || 0) +
-                                ' still without metadata.';
-                        } else {
-                            el.style.color = '';
-                            el.textContent = 'Finds every video missing JavOrganizer metadata (or stuck at title-only) and scrapes it now. Deep Re-scrape purges the cache and re-scrapes everything.';
-                        }
-                    }
-                }, function (err) {
-                    // A failed read must never end the indicator. The scan
-                    // keeps running on the server, and the page recovers by
-                    // itself as soon as a read succeeds again. The usual cause
-                    // is a session that expired or a server restart, so say
-                    // that instead of telling the user to reload - reloading
-                    // does not help when the session is gone.
-                    if (!scanStateTimer) {
-                        scanStateTimer = setInterval(updateScanState, scanPollMs);
-                    }
-
-                    var el = document.querySelector('#ScanState');
-                    if (!el) {
-                        return;
-                    }
-
-                    var status = err && (err.status === 401 || err.status === 403);
-                    el.style.color = '#e5a00d';
-                    el.textContent = status
-                        ? 'Your Jellyfin session expired - sign in again to see the progress. The scan itself keeps running.'
-                        : 'Could not read the scan state from the server - still retrying.';
-                });
-            }
-
-            function triggerScan(url, button) {
-                var btn = button;
-                var original = btn.querySelector('span').textContent;
-                btn.disabled = true;
-                btn.querySelector('span').textContent = 'Starting…';
-
-                function restore() {
-                    // Restore this button explicitly: the scan may not have
-                    // started, so the other button's state must not be assumed.
-                    btn.disabled = false;
-                    btn.querySelector('span').textContent = original;
-                }
-
-                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url), dataType: 'json' }).then(function (result) {
-                    setStatus('#ScanStatus', result && result.message ? result.message : 'Scan request sent.', false);
-                    restore();
-                    updateScanState();
-                }, function () {
-                    setStatus('#ScanStatus', 'Could not start the scan.', true);
-                    restore();
-                    updateScanState();
-                });
-            }
-
-            function cancelScan(button) {
-                var btn = button;
-                var original = btn.querySelector('span').textContent;
-                btn.disabled = true;
-                btn.querySelector('span').textContent = 'Cancelling…';
-
-                function restore() {
-                    btn.disabled = false;
-                    btn.querySelector('span').textContent = original;
-                }
-
-                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel'), dataType: 'json' }).then(function (result) {
-                    setStatus('#ScanStatus', result && result.message ? result.message : 'Cancel requested.', false);
-                    restore();
-                    updateScanState();
-                }, function () {
-                    setStatus('#ScanStatus', 'Could not cancel the scan.', true);
-                    restore();
-                });
-            }
-
-            document.querySelector('#ScanNowButton')
-                .addEventListener('click', function () { triggerScan('JavOrganizer/Scan', this); });
-
-            document.querySelector('#DeepScanButton')
-                .addEventListener('click', function () { triggerScan('JavOrganizer/Scan/Deep', this); });
-
-            document.querySelector('#CancelScanButton')
-                .addEventListener('click', function () { cancelScan(this); });
-
-            document.querySelector('#JavOrganizerConfigPage')
-                .addEventListener('pageshow', function () {
-                    Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(JavOrganizerConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#Language').value = config.Language || 'en';
-                        document.querySelector('#FlareSolverrUrl').value = config.FlareSolverrUrl || '';
-                        document.querySelector('#FlaresolverrExecutablePath').value = config.FlaresolverrExecutablePath || '';
-                        document.querySelector('#CacheHours').value = config.CacheHours;
-                        document.querySelector('#NegativeCacheHours').value = config.NegativeCacheHours;
-                        document.querySelector('#RequestDelayMs').value = config.RequestDelayMs;
-                        document.querySelector('#MaxConcurrentScrapes').value = config.MaxConcurrentScrapes || 4;
-                        document.querySelector('#MaxSitesPerScrape').value = config.MaxSitesPerScrape || 8;
-                        document.querySelector('#AutoScanOnStartup').checked = config.AutoScanOnStartup;
-                        document.querySelector('#UseJavBus').checked = config.UseJavBus;
-                        document.querySelector('#UseMissAv').checked = config.UseMissAv;
-                        document.querySelector('#UseMissAvMirror').checked = config.UseMissAvMirror;
-                        document.querySelector('#UseOneJav').checked = config.UseOneJav;
-                        document.querySelector('#UseFanza').checked = config.UseFanza;
-                        document.querySelector('#UseFanzaDvd').checked = config.UseFanzaDvd;
-                        document.querySelector('#UseJavLand').checked = config.UseJavLand;
-                        document.querySelector('#Use123Av').checked = config.Use123Av;
-                        document.querySelector('#UseSextb').checked = config.UseSextb;
-                        document.querySelector('#UseSupJav').checked = config.UseSupJav;
-                        document.querySelector('#UseJavGg').checked = config.UseJavGg;
-                        document.querySelector('#UseJavSeen').checked = config.UseJavSeen;
-                        document.querySelector('#UseJavMix').checked = config.UseJavMix;
-                        document.querySelector('#UseJavQuick').checked = config.UseJavQuick;
-                        document.querySelector('#UseJavTube').checked = config.UseJavTube;
-                        document.querySelector('#UseJavGuru').checked = config.UseJavGuru;
-                        document.querySelector('#UseMgstage').checked = config.UseMgstage;
-                        document.querySelector('#UseJavDb').checked = config.UseJavDb;
-                        document.querySelector('#BuildCollections').checked = config.BuildCollections;
-                        document.querySelector('#BuildStudioCollections').checked = config.BuildStudioCollections;
-                        document.querySelector('#BuildGenreCollections').checked = config.BuildGenreCollections;
-                        document.querySelector('#BuildYearCollections').checked = config.BuildYearCollections;
-                        document.querySelector('#MinVideosPerCollection').value = config.MinVideosPerCollection || 2;
-                        Dashboard.hideLoadingMsg();
-                    }, function (err) {
-                        // Never leave the page stuck behind the loading overlay
-                        // when the configuration cannot be read.
-                        Dashboard.hideLoadingMsg();
-                        var el = document.querySelector('#ScanState');
-                        if (el) {
-                            el.style.color = '#e5a00d';
-                            el.textContent = (err && (err.status === 401 || err.status === 403))
-                                ? 'Your Jellyfin session expired - sign in again to see the settings.'
-                                : 'Could not read the plugin settings from the server.';
-                        }
-                    });
-
-                    updateScanState();
-                    updateSiteStatus();
-
-                    // The FlareSolverr check is deliberately not run on load:
-                    // tests are what the button is for. The status line starts
-                    // neutral so an untested instance never looks broken.
-                    var fsOut = document.querySelector('#FlareSolverrStatus');
-                    if (fsOut) {
-                        fsOut.style.color = '';
-                        fsOut.textContent = 'Click the button below to check the configured FlareSolverr.';
-                    }
-
-                    // Timers are torn down on viewhide and re-armed here, so
-                    // navigating back and forth never stacks intervals.
-                    if (!siteStateTimer) {
-                        siteStateTimer = setInterval(function () {
-                            // Refresh site health only while the page is visible.
-                            if (document.querySelector('#JavOrganizerConfigPage') && !document.hidden) {
-                                updateSiteStatus();
+                            var el = document.querySelector('#ScanState');
+                            if (!el) {
+                                return;
                             }
-                        }, 10000);
-                    }
-                });
 
-            document.querySelector('#JavOrganizerConfigPage')
-                .addEventListener('viewhide', function () {
-                    stopTimers();
-                });
-
-            // Clears every polling timer this page owns.
-            function stopTimers() {
-                if (scanStateTimer) { clearInterval(scanStateTimer); scanStateTimer = null; }
-                if (siteStateTimer) { clearInterval(siteStateTimer); siteStateTimer = null; }
-            }
-
-            document.querySelector('#JavOrganizerConfigForm')
-                .addEventListener('submit', function (e) {
-                    Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(JavOrganizerConfig.pluginUniqueId).then(function (config) {
-                        config.Language = document.querySelector('#Language').value;
-                        config.FlareSolverrUrl = document.querySelector('#FlareSolverrUrl').value;
-                        config.FlaresolverrExecutablePath = document.querySelector('#FlaresolverrExecutablePath').value;
-                        config.CacheHours = parseInt(document.querySelector('#CacheHours').value, 10) || 0;
-                        config.NegativeCacheHours = parseInt(document.querySelector('#NegativeCacheHours').value, 10) || 0;
-                        config.RequestDelayMs = parseInt(document.querySelector('#RequestDelayMs').value, 10) || 0;
-                        config.MaxConcurrentScrapes = parseInt(document.querySelector('#MaxConcurrentScrapes').value, 10) || 4;
-                        config.MaxSitesPerScrape = parseInt(document.querySelector('#MaxSitesPerScrape').value, 10) || 8;
-                        config.AutoScanOnStartup = document.querySelector('#AutoScanOnStartup').checked;
-                        config.UseJavBus = document.querySelector('#UseJavBus').checked;
-                        config.UseMissAv = document.querySelector('#UseMissAv').checked;
-                        config.UseMissAvMirror = document.querySelector('#UseMissAvMirror').checked;
-                        config.UseOneJav = document.querySelector('#UseOneJav').checked;
-                        config.UseFanza = document.querySelector('#UseFanza').checked;
-                        config.UseFanzaDvd = document.querySelector('#UseFanzaDvd').checked;
-                        config.UseJavLand = document.querySelector('#UseJavLand').checked;
-                        config.Use123Av = document.querySelector('#Use123Av').checked;
-                        config.UseSextb = document.querySelector('#UseSextb').checked;
-                        config.UseSupJav = document.querySelector('#UseSupJav').checked;
-                        config.UseJavGg = document.querySelector('#UseJavGg').checked;
-                        config.UseJavSeen = document.querySelector('#UseJavSeen').checked;
-                        config.UseJavMix = document.querySelector('#UseJavMix').checked;
-                        config.UseJavQuick = document.querySelector('#UseJavQuick').checked;
-                        config.UseJavTube = document.querySelector('#UseJavTube').checked;
-                        config.UseJavGuru = document.querySelector('#UseJavGuru').checked;
-                        config.UseMgstage = document.querySelector('#UseMgstage').checked;
-                        config.UseJavDb = document.querySelector('#UseJavDb').checked;
-                        config.BuildCollections = document.querySelector('#BuildCollections').checked;
-                        config.BuildStudioCollections = document.querySelector('#BuildStudioCollections').checked;
-                        config.BuildGenreCollections = document.querySelector('#BuildGenreCollections').checked;
-                        config.BuildYearCollections = document.querySelector('#BuildYearCollections').checked;
-                        config.MinVideosPerCollection = parseInt(document.querySelector('#MinVideosPerCollection').value, 10) || 2;
-                        ApiClient.updatePluginConfiguration(JavOrganizerConfig.pluginUniqueId, config).then(function (result) {
-                            Dashboard.processPluginConfigurationUpdateResult(result);
-                            setStatus('#ConfigStatus', 'Settings saved.', false);
-                        }, function () {
-                            // A failed save must not leave the page stuck behind
-                            // the loading overlay with no explanation.
-                            Dashboard.hideLoadingMsg();
-                            setStatus('#ConfigStatus', 'Could not save the JavOrganizer settings.', true);
+                            var status = err && (err.status === 401 || err.status === 403);
+                            tone(el, 'u-warn');
+                            el.textContent = status
+                                ? 'Your Jellyfin session expired - sign in again to see the progress. The scan itself keeps running.'
+                                : 'Could not read the scan state from the server - still retrying.';
                         });
-                    }, function () {
-                        Dashboard.hideLoadingMsg();
-                        setStatus('#ConfigStatus', 'Could not read the JavOrganizer settings.', true);
-                    });
+                    }
 
-                    e.preventDefault();
-                    return false;
-                });
-        </script>
+                    function triggerScan(url, button) {
+                        var btn = button;
+                        var original = btn.querySelector('span').textContent;
+                        btn.disabled = true;
+                        btn.querySelector('span').textContent = 'Starting…';
+
+                        function restore() {
+                            btn.disabled = false;
+                            btn.querySelector('span').textContent = original;
+                        }
+
+                        ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(url), dataType: 'json' }).then(function (result) {
+                            setStatus('#ScanStatus', result && result.message ? result.message : 'Scan request sent.', false);
+                            restore();
+                            updateScanState();
+                        }, function () {
+                            setStatus('#ScanStatus', 'Could not start the scan.', true);
+                            restore();
+                            updateScanState();
+                        });
+                    }
+
+                    function cancelScan(button) {
+                        var btn = button;
+                        var original = btn.querySelector('span').textContent;
+                        btn.disabled = true;
+                        btn.querySelector('span').textContent = 'Cancelling…';
+
+                        function restore() {
+                            btn.disabled = false;
+                            btn.querySelector('span').textContent = original;
+                        }
+
+                        ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('JavOrganizer/Scan/Cancel'), dataType: 'json' }).then(function (result) {
+                            setStatus('#ScanStatus', result && result.message ? result.message : 'Cancel requested.', false);
+                            restore();
+                            updateScanState();
+                        }, function () {
+                            setStatus('#ScanStatus', 'Could not cancel the scan.', true);
+                            restore();
+                        });
+                    }
+
+                    document.querySelector('#ScanNowButton')
+                        .addEventListener('click', function () { triggerScan('JavOrganizer/Scan', this); });
+
+                    document.querySelector('#DeepScanButton')
+                        .addEventListener('click', function () { triggerScan('JavOrganizer/Scan/Deep', this); });
+
+                    document.querySelector('#CancelScanButton')
+                        .addEventListener('click', function () { cancelScan(this); });
+
+                    // ---- section tabs: one panel at a time, keyboard accessible ----
+                    (function () {
+                        var tabs = Array.prototype.slice.call(document.querySelectorAll('#JavOrganizerConfigPage .jav-tab'));
+                        var panels = Array.prototype.slice.call(document.querySelectorAll('#JavOrganizerConfigPage .jav-panel'));
+
+                        function activate(id) {
+                            tabs.forEach(function (t) {
+                                var on = t.getAttribute('data-panel') === id;
+                                t.classList.toggle('is-active', on);
+                                t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                t.tabIndex = on ? 0 : -1;
+                            });
+                            panels.forEach(function (p) {
+                                p.classList.toggle('is-active', p.id === id);
+                            });
+                        }
+
+                        tabs.forEach(function (tab, i) {
+                            tab.addEventListener('click', function () {
+                                activate(tab.getAttribute('data-panel'));
+                            });
+                            tab.addEventListener('keydown', function (e) {
+                                var dir = 0;
+                                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { dir = 1; }
+                                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { dir = -1; }
+                                else if (e.key === 'Home') { dir = -tabs.length; }
+                                else if (e.key === 'End') { dir = tabs.length; }
+                                if (!dir) { return; }
+                                e.preventDefault();
+                                var next = tabs[(i + dir + tabs.length) % tabs.length];
+                                next.focus();
+                                activate(next.getAttribute('data-panel'));
+                            });
+                        });
+
+                        activate('jav-panel-scan');
+                    })();
+
+                    // ---- bulk site toggles (18 optional sources; JavLibrary is always on) ----
+                    (function () {
+                        var siteIds = ['UseJavDb', 'UseJavBus', 'UseMissAv', 'UseMissAvMirror', 'UseOneJav', 'UseFanza',
+                            'UseFanzaDvd', 'UseJavLand', 'Use123Av', 'UseSextb', 'UseSupJav', 'UseJavGg', 'UseJavSeen',
+                            'UseJavMix', 'UseJavQuick', 'UseJavTube', 'UseJavGuru', 'UseMgstage'];
+                        function setAll(on) {
+                            siteIds.forEach(function (id) {
+                                var el = document.getElementById(id);
+                                if (el) { el.checked = on; }
+                            });
+                            setDirty(true);
+                        }
+                        var on = document.getElementById('JavSitesAllOn');
+                        var off = document.getElementById('JavSitesAllOff');
+                        if (on) { on.addEventListener('click', function () { setAll(true); }); }
+                        if (off) { off.addEventListener('click', function () { setAll(false); }); }
+                    })();
+
+                    // ---- unsaved-changes indicator ----
+                    function setDirty(dirty) {
+                        var el = document.querySelector('#JavDirtyDot');
+                        if (el) { el.hidden = !dirty; }
+                    }
+
+                    document.querySelector('#JavOrganizerConfigForm')
+                        .addEventListener('input', function () { setDirty(true); });
+                    document.querySelector('#JavOrganizerConfigForm')
+                        .addEventListener('change', function () { setDirty(true); });
+
+                    document.querySelector('#JavOrganizerConfigPage')
+                        .addEventListener('pageshow', function () {
+                            Dashboard.showLoadingMsg();
+                            ApiClient.getPluginConfiguration(JavOrganizerConfig.pluginUniqueId).then(function (config) {
+                                document.querySelector('#Language').value = config.Language || 'en';
+                                document.querySelector('#FlareSolverrUrl').value = config.FlareSolverrUrl || '';
+                                document.querySelector('#FlaresolverrExecutablePath').value = config.FlaresolverrExecutablePath || '';
+                                document.querySelector('#CacheHours').value = config.CacheHours;
+                                document.querySelector('#NegativeCacheHours').value = config.NegativeCacheHours;
+                                document.querySelector('#RequestDelayMs').value = config.RequestDelayMs;
+                                document.querySelector('#MaxConcurrentScrapes').value = config.MaxConcurrentScrapes || 4;
+                                document.querySelector('#MaxSitesPerScrape').value = config.MaxSitesPerScrape || 8;
+                                document.querySelector('#AutoScanOnStartup').checked = config.AutoScanOnStartup;
+                                document.querySelector('#UseJavBus').checked = config.UseJavBus;
+                                document.querySelector('#UseMissAv').checked = config.UseMissAv;
+                                document.querySelector('#UseMissAvMirror').checked = config.UseMissAvMirror;
+                                document.querySelector('#UseOneJav').checked = config.UseOneJav;
+                                document.querySelector('#UseFanza').checked = config.UseFanza;
+                                document.querySelector('#UseFanzaDvd').checked = config.UseFanzaDvd;
+                                document.querySelector('#UseJavLand').checked = config.UseJavLand;
+                                document.querySelector('#Use123Av').checked = config.Use123Av;
+                                document.querySelector('#UseSextb').checked = config.UseSextb;
+                                document.querySelector('#UseSupJav').checked = config.UseSupJav;
+                                document.querySelector('#UseJavGg').checked = config.UseJavGg;
+                                document.querySelector('#UseJavSeen').checked = config.UseJavSeen;
+                                document.querySelector('#UseJavMix').checked = config.UseJavMix;
+                                document.querySelector('#UseJavQuick').checked = config.UseJavQuick;
+                                document.querySelector('#UseJavTube').checked = config.UseJavTube;
+                                document.querySelector('#UseJavGuru').checked = config.UseJavGuru;
+                                document.querySelector('#UseMgstage').checked = config.UseMgstage;
+                                document.querySelector('#UseJavDb').checked = config.UseJavDb;
+                                document.querySelector('#BuildCollections').checked = config.BuildCollections;
+                                document.querySelector('#BuildStudioCollections').checked = config.BuildStudioCollections;
+                                document.querySelector('#BuildGenreCollections').checked = config.BuildGenreCollections;
+                                document.querySelector('#BuildYearCollections').checked = config.BuildYearCollections;
+                                document.querySelector('#MinVideosPerCollection').value = config.MinVideosPerCollection || 2;
+                                setDirty(false);
+                                Dashboard.hideLoadingMsg();
+                            }, function (err) {
+                                // Never leave the page stuck behind the loading overlay
+                                // when the configuration cannot be read.
+                                Dashboard.hideLoadingMsg();
+                                var el = document.querySelector('#ScanState');
+                                if (el) {
+                                    tone(el, 'u-warn');
+                                    el.textContent = (err && (err.status === 401 || err.status === 403))
+                                        ? 'Your Jellyfin session expired - sign in again to see the settings.'
+                                        : 'Could not read the plugin settings from the server.';
+                                }
+                            });
+
+                            updateScanState();
+                            updateSiteStatus();
+
+                            // The FlareSolverr check is deliberately not run on load:
+                            // tests are what the button is for. The status line starts
+                            // neutral so an untested instance never looks broken.
+                            var fsOut = document.querySelector('#FlareSolverrStatus');
+                            if (fsOut) {
+                                tone(fsOut, null);
+                                fsOut.textContent = 'Click the button to check the configured FlareSolverr.';
+                            }
+
+                            // Timers are torn down on viewhide and re-armed here, so
+                            // navigating back and forth never stacks intervals.
+                            if (!siteStateTimer) {
+                                siteStateTimer = setInterval(function () {
+                                    // Refresh site health only while the page is visible.
+                                    if (document.querySelector('#JavOrganizerConfigPage') && !document.hidden) {
+                                        updateSiteStatus();
+                                    }
+                                }, 10000);
+                            }
+                        });
+
+                    document.querySelector('#JavOrganizerConfigPage')
+                        .addEventListener('viewhide', function () {
+                            stopTimers();
+                        });
+
+                    // Clears every polling timer this page owns.
+                    function stopTimers() {
+                        if (scanStateTimer) { clearInterval(scanStateTimer); scanStateTimer = null; }
+                        if (siteStateTimer) { clearInterval(siteStateTimer); siteStateTimer = null; }
+                    }
+
+                    document.querySelector('#JavOrganizerConfigForm')
+                        .addEventListener('submit', function (e) {
+                            Dashboard.showLoadingMsg();
+                            ApiClient.getPluginConfiguration(JavOrganizerConfig.pluginUniqueId).then(function (config) {
+                                config.Language = document.querySelector('#Language').value;
+                                config.FlareSolverrUrl = document.querySelector('#FlareSolverrUrl').value;
+                                config.FlaresolverrExecutablePath = document.querySelector('#FlaresolverrExecutablePath').value;
+                                config.CacheHours = parseInt(document.querySelector('#CacheHours').value, 10) || 0;
+                                config.NegativeCacheHours = parseInt(document.querySelector('#NegativeCacheHours').value, 10) || 0;
+                                config.RequestDelayMs = parseInt(document.querySelector('#RequestDelayMs').value, 10) || 0;
+                                config.MaxConcurrentScrapes = parseInt(document.querySelector('#MaxConcurrentScrapes').value, 10) || 4;
+                                config.MaxSitesPerScrape = parseInt(document.querySelector('#MaxSitesPerScrape').value, 10) || 8;
+                                config.AutoScanOnStartup = document.querySelector('#AutoScanOnStartup').checked;
+                                config.UseJavBus = document.querySelector('#UseJavBus').checked;
+                                config.UseMissAv = document.querySelector('#UseMissAv').checked;
+                                config.UseMissAvMirror = document.querySelector('#UseMissAvMirror').checked;
+                                config.UseOneJav = document.querySelector('#UseOneJav').checked;
+                                config.UseFanza = document.querySelector('#UseFanza').checked;
+                                config.UseFanzaDvd = document.querySelector('#UseFanzaDvd').checked;
+                                config.UseJavLand = document.querySelector('#UseJavLand').checked;
+                                config.Use123Av = document.querySelector('#Use123Av').checked;
+                                config.UseSextb = document.querySelector('#UseSextb').checked;
+                                config.UseSupJav = document.querySelector('#UseSupJav').checked;
+                                config.UseJavGg = document.querySelector('#UseJavGg').checked;
+                                config.UseJavSeen = document.querySelector('#UseJavSeen').checked;
+                                config.UseJavMix = document.querySelector('#UseJavMix').checked;
+                                config.UseJavQuick = document.querySelector('#UseJavQuick').checked;
+                                config.UseJavTube = document.querySelector('#UseJavTube').checked;
+                                config.UseJavGuru = document.querySelector('#UseJavGuru').checked;
+                                config.UseMgstage = document.querySelector('#UseMgstage').checked;
+                                config.UseJavDb = document.querySelector('#UseJavDb').checked;
+                                config.BuildCollections = document.querySelector('#BuildCollections').checked;
+                                config.BuildStudioCollections = document.querySelector('#BuildStudioCollections').checked;
+                                config.BuildGenreCollections = document.querySelector('#BuildGenreCollections').checked;
+                                config.BuildYearCollections = document.querySelector('#BuildYearCollections').checked;
+                                config.MinVideosPerCollection = parseInt(document.querySelector('#MinVideosPerCollection').value, 10) || 2;
+                                ApiClient.updatePluginConfiguration(JavOrganizerConfig.pluginUniqueId, config).then(function (result) {
+                                    Dashboard.processPluginConfigurationUpdateResult(result);
+                                    setDirty(false);
+                                    setStatus('#ConfigStatus', 'Settings saved.', false);
+                                }, function () {
+                                    // A failed save must not leave the page stuck behind
+                                    // the loading overlay with no explanation.
+                                    Dashboard.hideLoadingMsg();
+                                    setStatus('#ConfigStatus', 'Could not save the JavOrganizer settings.', true);
+                                });
+                            }, function () {
+                                Dashboard.hideLoadingMsg();
+                                setStatus('#ConfigStatus', 'Could not read the JavOrganizer settings.', true);
+                            });
+
+                            e.preventDefault();
+                            return false;
+                        });
+                </script>
+            </div>
+        </div>
     </div>
 </body>
 </html>
