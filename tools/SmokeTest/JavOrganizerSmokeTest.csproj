@@ -28,6 +28,7 @@
     <Compile Include="..\..\AdaptiveThrottle.cs" Link="AdaptiveThrottle.cs" />
     <Compile Include="..\..\FlareSolverrUrls.cs" Link="FlareSolverrUrls.cs" />
     <Compile Include="..\..\JavMetadataProvider.cs" Link="JavMetadataProvider.cs" />
+    <Compile Include="..\..\JavHttp.cs" Link="JavHttp.cs" />
     <Compile Include="..\..\Plugin.cs" Link="Plugin.cs" />
     <Compile Include="..\..\PluginConfiguration.cs" Link="PluginConfiguration.cs" />
     <Compile Include="..\..\JavHttp.cs" Link="JavHttp.cs" />

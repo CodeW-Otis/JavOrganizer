@@ -91,9 +91,9 @@ public sealed class JavPersonImageProvider : IRemoteImageProvider
         }
 
         var url = FindPersonPhoto(name);
-        if (url is null)
+        if (!JavHttp.IsUsableImageUrl(url))
         {
-            _logger.LogDebug("No cached photo for person '{Name}'", name);
+            _logger.LogDebug("No usable cached photo for person '{Name}'", name);
             return Task.FromResult<IEnumerable<RemoteImageInfo>>([]);
         }
 
@@ -102,7 +102,7 @@ public sealed class JavPersonImageProvider : IRemoteImageProvider
             new()
             {
                 ProviderName = Name,
-                Url = url,
+                Url = url!,
                 ThumbnailUrl = url,
                 Type = ImageType.Primary
             }

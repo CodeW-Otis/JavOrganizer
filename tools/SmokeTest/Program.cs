@@ -141,6 +141,25 @@ Check(wpVideo?.ReleaseDate == new DateTime(2023, 5, 1), $"WP date (got '{wpVideo
 Check(wpVideo?.CoverUrl == "https://supjav.com/wp-content/uploads/abp123.jpg", "WP og:image cover");
 Check(wpVideo?.Genres.Count == 2 && wpVideo.Genres[0] == "Creampie", "WP categories as genres");
 
+Console.WriteLine("== Placeholder image URLs are not downloaded ==");
+Check(!JavHttp.IsUsableImageUrl("data:image/png;base64,iVBORw0KGgo="), "data: image rejected");
+Check(!JavHttp.IsUsableImageUrl("javascript:alert(1)"), "javascript: URL rejected");
+Check(!JavHttp.IsUsableImageUrl(""), "empty URL rejected");
+Check(!JavHttp.IsUsableImageUrl(null), "null URL rejected");
+Check(JavHttp.IsUsableImageUrl("https://x/y.jpg"), "https URL accepted");
+Check(JavHttp.IsUsableImageUrl("http://x/y.jpg"), "http URL accepted");
+
+var placeholderHtml = """
+<html>
+<head><meta property="og:image" content="data:image/png;base64,iVBORw0KGgo=" /></head>
+<body><h1 class="entry-title">ABP-123 Placeholder</h1></body>
+</html>
+""";
+var placeholderDoc = new HtmlDocument();
+placeholderDoc.LoadHtml(placeholderHtml);
+var placeholderVideo = supjav.ParseVideoPage(placeholderDoc, placeholderHtml, "ABP-123");
+Check(placeholderVideo?.CoverUrl is null, "data: cover rejected by the scraper");
+
 Console.WriteLine("== Result-link extraction (regression: silent 'no match') ==");
 // A result-link selector that matches nothing makes a site silently report
 // "no match" for every code while still looking healthy in the site panel —

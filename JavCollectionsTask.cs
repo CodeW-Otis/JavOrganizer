@@ -618,7 +618,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                 && item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out var videoId))
             {
                 var record = JavCache.FindByVideoId(videoId, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-                if (record?.CoverUrl is { Length: > 0 } cover)
+                if (record?.CoverUrl is { Length: > 0 } cover && JavHttp.IsUsableImageUrl(cover))
                 {
                     return new ImageSource { Url = cover, CacheKey = id.ToString("N"), IsPortrait = false };
                 }
@@ -710,6 +710,11 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// <returns>The stored file path, or <c>null</c> on failure.</returns>
     private async Task<string?> DownloadImageAsync(BaseItem item, string ownerName, ImageSource source, CancellationToken ct)
     {
+        if (!JavHttp.IsUsableImageUrl(source.Url))
+        {
+            return null;
+        }
+
         try
         {
             using var response = await JavHttp.GetImageResponse(source.Url, ct).ConfigureAwait(false);

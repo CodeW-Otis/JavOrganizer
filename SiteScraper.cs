@@ -997,15 +997,16 @@ public abstract partial class SiteScraper : IDisposable
         var value = url.Trim();
         if (value.StartsWith("//", StringComparison.Ordinal))
         {
-            return "https:" + value;
+            value = "https:" + value;
         }
 
-        if (Uri.IsWellFormedUriString(value, UriKind.Absolute))
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var absolute)
+            && !Uri.TryCreate(new Uri(BaseUrl, UriKind.Absolute), value, out absolute))
         {
-            return value;
+            return null;
         }
 
-        return new Uri(new Uri(BaseUrl, UriKind.Absolute), value).ToString();
+        return JavHttp.IsUsableImageUrl(absolute.ToString()) ? absolute.ToString() : null;
     }
 
     private protected string SelectText(HtmlDocument doc, string xpath)

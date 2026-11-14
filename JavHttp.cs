@@ -41,6 +41,23 @@ internal static class JavHttp
     };
 
     /// <summary>
+    /// Whether a scraped image URL can actually be downloaded. Lazy-loaded
+    /// pages often expose a <c>data:</c> pixel placeholder or a
+    /// <c>javascript:</c> stub where the real <c>src</c> should be; handing
+    /// one of those to Jellyfin makes the image refresh fail with
+    /// "The 'data' scheme is not supported" and discards the item's other
+    /// image candidates.
+    /// </summary>
+    /// <param name="url">Candidate image URL.</param>
+    /// <returns><c>true</c> for absolute HTTP(S) URLs only.</returns>
+    internal static bool IsUsableImageUrl(string? url)
+    {
+        return !string.IsNullOrWhiteSpace(url)
+            && Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    /// <summary>
     /// Downloads an image with the headers its CDN expects: a browser user
     /// agent and a Referer matching the image's own host (javbus.com covers
     /// return 403 when the Referer points at a different site).

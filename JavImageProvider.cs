@@ -84,27 +84,29 @@ public sealed class JavImageProvider : IRemoteImageProvider
             }
         }
 
-        if (video?.CoverUrl is null)
-        {
-            _logger.LogDebug("No cached cover for '{Name}'", item.Name);
-            return Task.FromResult<IEnumerable<RemoteImageInfo>>([]);
-        }
-
         // The JavLibrary cover is the primary poster; scene screenshots from
-        // the same page are offered as backdrop images.
-        var images = new List<RemoteImageInfo>
+        // the same page are offered as backdrop images. Placeholder data: URIs
+        // are dropped here: Jellyfin cannot download them and one bad cover
+        // would fail the whole image refresh.
+        var images = new List<RemoteImageInfo>();
+        if (JavHttp.IsUsableImageUrl(video?.CoverUrl))
         {
-            new()
+            images.Add(new RemoteImageInfo
             {
                 ProviderName = Name,
-                Url = video.CoverUrl,
+                Url = video!.CoverUrl!,
                 ThumbnailUrl = video.CoverUrl,
                 Type = ImageType.Primary
-            }
-        };
+            });
+        }
 
-        foreach (var preview in video.PreviewUrls)
+        foreach (var preview in video?.PreviewUrls ?? [])
         {
+            if (!JavHttp.IsUsableImageUrl(preview))
+            {
+                continue;
+            }
+
             images.Add(new RemoteImageInfo
             {
                 ProviderName = Name,
@@ -112,6 +114,11 @@ public sealed class JavImageProvider : IRemoteImageProvider
                 ThumbnailUrl = preview,
                 Type = ImageType.Backdrop
             });
+        }
+
+        if (images.Count == 0)
+        {
+            _logger.LogDebug("No usable cached image for '{Name}'", item.Name);
         }
 
         return Task.FromResult<IEnumerable<RemoteImageInfo>>(images);

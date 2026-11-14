@@ -636,6 +636,12 @@ fields, endpoints and polling behavior are unchanged.
   Japanese title stayed. The bounded three-attempt retry counter is now the
   only limiter: a queued item is re-scraped on that pass, and only a title
   with no English release anywhere is accepted after the third attempt.
+- **Placeholder image URLs no longer fail the image refresh.** Lazy-loaded
+  pages can expose a `data:` pixel (or `javascript:` stub) where the real
+  cover belongs. Jellyfin cannot download those, and one such URL aborted
+  the whole image pass for that item with *The 'data' scheme is not
+  supported*. Scrapers now reject non-HTTP(S) image URLs, and the metadata,
+  person-image and collection paths ignore any such URL already in the cache.
 
 **Jellyfin 12.3 and 12.4** join the supported range. The same two builds
 still cover everything; the source was compiled against each server
