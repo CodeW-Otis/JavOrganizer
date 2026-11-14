@@ -12,7 +12,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.4.0.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-124-v1.5.5.0.zip",
-        "checksum": "a86ca7508a4357be38a454b067f5a3244f3e40bd4a361d8431149dbce2062bb4",
+        "checksum": "5b8e77b3df06f1a3abe3baad1d3d3be486cb922f5bd0f03eb6d7d1e076afbf4f",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -20,7 +20,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.3.0.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-123-v1.5.5.0.zip",
-        "checksum": "1ea77e97722ae2ff9c54fd2c42f4ebc9905ede4914c9f9a0148c1d4979a0ef23",
+        "checksum": "9b78dca4aa90b2cf41727b08760468247d58289fb21c95b5eaf2da1ee66a1e38",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -28,7 +28,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.2.0.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-122-v1.5.5.0.zip",
-        "checksum": "817f84ae5d2fafb93080b82f17575647a88e2571524a06b11346381f514a8ff4",
+        "checksum": "ecab3fac10175b4de1d72e82e8402daf726a0b3ea6fb141f05483ca612ee06f8",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -36,7 +36,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.1.0.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-121-v1.5.5.0.zip",
-        "checksum": "228551325c282554ec8c3636380e0ee7a770cbe8192cb0edd036762a069adc89",
+        "checksum": "94f24ffcc6b73d1b454b9119eea39aee8a48feefc8164990a406c8e57a41fd9d",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -44,7 +44,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.0.0.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-120-v1.5.5.0.zip",
-        "checksum": "229e0f40fec45838453e675ec5817f1948d93a5f3df8b375db9c3d0e0753482b",
+        "checksum": "1d5f1632d0099798f2230e068d9a3f51f23cdb8732683c63f9da040571218bbc",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -52,7 +52,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "10.11.11.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-1011-v1.5.5.0.zip",
-        "checksum": "6f794e962141169b87bd13602330c02e603e918350db82ca8e98a66e28268c65",
+        "checksum": "d9c1aed0257230ec069f1665df7f3932e040d745ac697394e2786303b71e1a4d",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -60,7 +60,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "10.10.7.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-1010-v1.5.5.0.zip",
-        "checksum": "22ae089409884bd6879fde7e8312a38076d4b6cea676e36f4a3a9eabb440a63e",
+        "checksum": "8594dd649d1cd07a99f4151018ce04c6435b5eb6aef8dbbc1b9f6e5a18f11ecf",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -68,7 +68,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "10.9.11.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-109-v1.5.5.0.zip",
-        "checksum": "61d853789ae702cb0c4f408b00bf6ba2c88d00996a77dc94a03daff6ef172376",
+        "checksum": "aa2065f5c7fa565cd557bbfb509a05541a7e0554eeaa78569dd6b2df0c735676",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {
@@ -76,7 +76,7 @@
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "10.8.13.0",
         "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.5/JavOrganizer-108-v1.5.5.0.zip",
-        "checksum": "7fcf24e959e18462e944f10fdcba572b848fbb0e001b23007cc322d4ddbc0141",
+        "checksum": "d0f17de77a3433ca6bf44c06258bcdba664d43e461da563ef3c83efbc4066184",
         "timestamp": "2026-11-15T00:00:00Z"
       },
       {

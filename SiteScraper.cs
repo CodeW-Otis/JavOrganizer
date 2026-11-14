@@ -1000,13 +1000,23 @@ public abstract partial class SiteScraper : IDisposable
             value = "https:" + value;
         }
 
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var absolute)
-            && !Uri.TryCreate(new Uri(BaseUrl, UriKind.Absolute), value, out absolute))
+        // A leading "/" is a site-relative path, but Uri parses it as a file:
+        // URL on Unix, so only an absolute HTTP(S) result may be returned
+        // directly; everything else resolves against the site base.
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absolute)
+            && !absolute.IsFile
+            && JavHttp.IsUsableImageUrl(absolute.ToString()))
         {
-            return null;
+            return absolute.ToString();
         }
 
-        return JavHttp.IsUsableImageUrl(absolute.ToString()) ? absolute.ToString() : null;
+        if (Uri.TryCreate(new Uri(BaseUrl, UriKind.Absolute), value, out var resolved))
+        {
+            var resolvedUrl = resolved.ToString();
+            return JavHttp.IsUsableImageUrl(resolvedUrl) ? resolvedUrl : null;
+        }
+
+        return null;
     }
 
     private protected string SelectText(HtmlDocument doc, string xpath)
