@@ -2,15 +2,16 @@
 #
 # Builds the JavOrganizer plugin on macOS and Linux (the bash twin of
 # build.ps1). Produces one publish folder per build under ./dist/ plus one
-# release zip per Jellyfin version line, each with the .meta sidecar and a
-# .sha256 checksum — identical layout to the PowerShell script.
+# release zip per Jellyfin version line, each with the .meta sidecar, a
+# .md5 catalog checksum and a .sha256 integrity checksum — identical layout
+# to the PowerShell script.
 #
 #   ./build.sh                 # build both lines (10.8 and 10.9+)
 #   ./build.sh 10.9            # build only the 10.9-and-later build
 #   ./build.sh 10.9 Debug      # ...in Debug configuration
 #
-# Requires: the .NET SDK (6.0 for the 10.8 line, 8.0 for 10.9+), zip, and
-# sha256sum (Linux) or shasum (macOS).
+# Requires: the .NET SDK (6.0 for the 10.8 line, 8.0 for 10.9+), zip,
+# md5sum + sha256sum (Linux) or md5 + shasum (macOS).
 
 set -euo pipefail
 
@@ -57,6 +58,17 @@ sha256_of() {
     fi
 }
 
+# Jellyfin's InstallationManager hashes the downloaded zip with MD5 and
+# compares it to the manifest's `checksum` field, so the catalog checksum
+# must be the MD5 (issue #1: a SHA-256 there fails every catalog install).
+md5_of() {
+    if command -v md5sum >/dev/null 2>&1; then
+        md5sum "$1" | awk '{print $1}'
+    else
+        md5 -q "$1"
+    fi
+}
+
 # write_meta <file> <targetAbi>
 write_meta() {
     local now
@@ -92,11 +104,14 @@ build_target() {
         (cd "$stage" && zip -q -r "$zip" .)
         rm -rf "$stage"
 
-        local hash
+        local md5 hash
+        md5="$(md5_of "$zip")"
         hash="$(sha256_of "$zip")"
+        printf '%s\n' "$md5" > "$zip.md5"
         printf '%s\n' "$hash" > "$zip.sha256"
         echo "OK   $out"
         echo "ZIP  $zip  (targetAbi $abi)"
+        echo "MD5    $md5  (manifest checksum)"
         echo "SHA256 $hash"
     done <<< "$lines"
 }

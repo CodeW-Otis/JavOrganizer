@@ -183,5 +183,6 @@ jobs:
           name: JavOrganizer-v${{ github.sha }}
           path: |
             dist/*.zip
+            dist/*.md5
             dist/*.sha256
           retention-days: 30

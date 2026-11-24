@@ -5,6 +5,7 @@ dist/
 
 # Release archives and their checksums (published as GitHub release assets)
 *.zip
+*.md5
 *.sha256
 
 # User-specific

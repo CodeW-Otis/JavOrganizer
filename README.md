@@ -530,7 +530,7 @@ You'll need the .NET SDK matching your target version (6.0 for the 10.8 line, 8.
 ./build.sh 10.9                    # Build the 10.9-and-later build
 ```
 
-Both scripts produce the same `dist/` layout: a publish folder per build and one release zip per Jellyfin version line, each with its `.meta` sidecar and `.sha256` checksum. The bash script needs `zip` plus `sha256sum` (Linux) or `shasum` (macOS).
+Both scripts produce the same `dist/` layout: a publish folder per build and one release zip per Jellyfin version line, each with its `.meta` sidecar, a `.md5` checksum and a `.sha256` checksum. The **MD5** is the value that goes into the catalog manifest's `checksum` field — Jellyfin verifies downloaded packages with MD5, so a SHA-256 there makes every catalog install fail. The bash script needs `zip` plus `md5sum`/`sha256sum` (Linux) or `md5`/`shasum` (macOS).
 
 To run the offline test suite (any platform):
 

@@ -854,9 +854,17 @@ if (manifestPath is not null)
                 Check(newest.TryGetProperty(key, out _), $"newest version has '{key}'");
             }
 
-            var checksum = newest.GetProperty("checksum").GetString() ?? string.Empty;
-            Check(checksum.Length == 64 && checksum.All(Uri.IsHexDigit),
-                $"newest checksum is a 64-char hex SHA256 (got '{checksum}')");
+            // Jellyfin's InstallationManager verifies the downloaded zip with
+            // MD5 (MD5.HashDataAsync + Convert.ToHexString) and compares it to
+            // `checksum` case-insensitively. A SHA-256 here makes EVERY catalog
+            // install fail with "The checksum of the received data doesn't
+            // match" (issue #1), so every entry must carry a 32-char hex MD5.
+            foreach (var entry in versions.EnumerateArray())
+            {
+                var checksum = entry.GetProperty("checksum").GetString() ?? string.Empty;
+                Check(checksum.Length == 32 && checksum.All(Uri.IsHexDigit),
+                    $"version {entry.GetProperty("version").GetString()} checksum is a 32-char hex MD5 (got '{checksum}')");
+            }
 
             var sourceUrl = newest.GetProperty("sourceUrl").GetString() ?? string.Empty;
             Check(sourceUrl.Contains("/releases/download/", StringComparison.Ordinal),

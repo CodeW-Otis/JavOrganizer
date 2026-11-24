@@ -127,10 +127,18 @@ foreach ($v in $targets) {
         Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
         Remove-Item $stage -Recurse -Force
 
+        # Jellyfin's InstallationManager verifies the downloaded zip with MD5
+        # and compares it to the manifest's `checksum` field, so the catalog
+        # checksum MUST be the MD5. Publishing a SHA-256 there makes every
+        # catalog install fail with "The checksum of the received data doesn't
+        # match" (issue #1). The SHA-256 is kept as an extra integrity sidecar.
+        $md5 = (Get-FileHash $zip -Algorithm MD5).Hash.ToLowerInvariant()
         $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         Write-Host "OK   $out" -ForegroundColor Green
         Write-Host "ZIP  $zip  (targetAbi $($line.abi))" -ForegroundColor Green
+        Write-Host "MD5    $md5  (manifest checksum)" -ForegroundColor Green
         Write-Host "SHA256 $hash" -ForegroundColor Green
+        $md5 | Set-Content "$zip.md5"
         $hash | Set-Content "$zip.sha256"
     }
 }
