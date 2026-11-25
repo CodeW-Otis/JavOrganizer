@@ -10,17 +10,34 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// normally needs no Cloudflare solving at all — a fast, reliable source.
 /// </summary>
 /// <remarks>
+/// <para>
 /// JavBus lists female idols through star links; male actors are usually
 /// not credited, so members land in the unseparated cast list and a
 /// gender-aware site (JavDB, MissAV) refines them during the merge.
+/// </para>
+/// <para>
+/// A browser that has not answered the age gate sees an "Age Verification
+/// JavBus" page instead of the database, which is easy to mistake for a dead
+/// site. The <c>dv=1</c> cookie above skips that gate. Lookalike domains
+/// (javbus.sbs and friends) are unrelated streaming CMS installs with no
+/// per-code pages, so they are deliberately not used as alternates.
+/// </para>
 /// </remarks>
 public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : SiteScraper(
         logger,
         lang.Equals("zh", StringComparison.OrdinalIgnoreCase) || lang.Equals("tw", StringComparison.OrdinalIgnoreCase)
-            ? "https://www.javbus.com/"
-            : $"https://www.javbus.com/{lang}/",
+            ? SiteRoot
+            : $"{SiteRoot}{lang}/",
         "dv=1")
 {
+    /// <summary>
+    /// The JavBus database host — the single place this site's domain is
+    /// written down. Requests, the absolute genre links the parser also
+    /// accepts, and every absolutized cover/preview URL all derive from it,
+    /// so a genuine domain move is a one-line change here.
+    /// </summary>
+    private const string SiteRoot = "https://www.javbus.com/";
+
     protected override string SiteName => "JavBus";
 
     /// <summary>
@@ -172,7 +189,7 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
         // Genre links live inside span.genre in the info panel; also accept
         // the plain absolute links older markup used.
         video.Genres = SelectTexts(doc, "//span[contains(@class,'genre')]//a[contains(@href,'/genre/')]")
-            .Concat(SelectTexts(doc, "//a[starts-with(@href,'https://www.javbus.com/genre')]"))
+            .Concat(SelectTexts(doc, $"//a[starts-with(@href,'{SiteRoot}genre')]"))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 

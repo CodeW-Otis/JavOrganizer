@@ -563,6 +563,15 @@ Try running **Scan Library Now** or **Deep Re-scrape Everything**. Check your lo
 **Lots of Forbidden/Cloudflare logs.**
 Configure FlareSolverr in the settings so the plugin can get past the checks.
 
+**JavBus looks empty or shows "Age Verification" in a browser.**
+That is JavBus's age gate, not a dead site. A browser that has not answered it
+gets the verification page instead of the database; the plugin sends the age
+cookie (`dv=1`) and reads the real pages directly, so JavBus keeps working. If
+the debug log reports `age/driver gate`, the gate answered despite the cookie —
+the address is being throttled, not the site retired. Lookalike domains such as
+`javbus.sbs` are a different website (a streaming CMS with no per-code pages),
+so the plugin deliberately does not scrape them.
+
 **FlareSolverr crashes immediately.**
 You might have an orphaned `chromedriver.exe` process. Kill it in Task Manager, clear out `%AppData%\undetected_chromedriver\`, and try again.
 

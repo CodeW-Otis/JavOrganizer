@@ -374,6 +374,21 @@ Check(realBusVideo?.CoverUrl == "https://www.javbus.com/pics/cover/7pqc_b.jpg", 
 Check(realBusVideo?.PreviewUrls.Count == 2 && realBusVideo.PreviewUrls[0].Contains("dmm.co.jp"), $"JavBus sample-box previews (got {realBusVideo?.PreviewUrls.Count})");
 Check(realBusVideo?.VideoId == "ABP-982", $"JavBus stable videoId=code (got '{realBusVideo?.VideoId}')");
 
+Console.WriteLine("== JavBus age gate is a miss, not a record ==");
+// A browser without the age cookie gets JavBus's "Age Verification JavBus"
+// page instead of a detail page - the shape users report as "the site is a
+// shell, it moved to another domain". The scraper sends dv=1, which skips
+// the gate; should the gate ever answer anyway, it must be a clean miss so
+// JavBus passes its slot to the next site instead of contributing garbage.
+var gateScraper = new JavBusScraper(logger, "en");
+HtmlInjector.SetPage(gateScraper, """
+<html><head><title>Age Verification JavBus - JavBus</title>
+<link rel="canonical" href="https://www.javbus.com/doc/driver-verify?referer=https%3A%2F%2Fwww.javbus.com%2Fen" /></head>
+<body><p>你是否已經成年?</p><form class="form1" method="post" action=""></form></body></html>
+""");
+var gateVideo = await gateScraper.FindByCodeAsync("MIAB-492", CancellationToken.None);
+Check(gateVideo is null, "JavBus age-gate page yields no record");
+
 Console.WriteLine("== Error-title rejection (CloudFront 403 pages etc.) ==");
 Check(Jellyfin.Plugin.JavOrganizer.SiteScraper.IsErrorTitle("403 ERROR"), "403 ERROR rejected");
 Check(Jellyfin.Plugin.JavOrganizer.SiteScraper.IsErrorTitle("The request could not be satisfied."), "cloudfront message rejected");
@@ -1349,17 +1364,31 @@ internal sealed class BanTestScraper : SiteScraper
 
     /// <summary>Replaces the HTTP client with one that always answers a ban page.</summary>
     public static void InjectBanPage(SiteScraper scraper)
+        => HtmlInjector.SetPage(scraper, "<html><body>Your IP address has been banned from this site.</body></html>");
+}
+
+/// <summary>
+/// Swaps a scraper's HTTP client for one that answers every request with a
+/// fixed page, so fetch-path behavior (ban pages, age gates) can be exercised
+/// without touching the network.
+/// </summary>
+internal static class HtmlInjector
+{
+    /// <summary>Replaces the scraper's HTTP client with a scripted-response one.</summary>
+    /// <param name="scraper">Scraper whose client is replaced.</param>
+    /// <param name="html">HTML the scripted client returns for every request.</param>
+    internal static void SetPage(SiteScraper scraper, string html)
     {
         var field = typeof(SiteScraper).GetField("_http", BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(scraper, new HttpClient(new BanPageHandler()));
+        field?.SetValue(scraper, new HttpClient(new ScriptedHtmlHandler(html)));
     }
 
-    private sealed class BanPageHandler : HttpMessageHandler
+    private sealed class ScriptedHtmlHandler(string html) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
-                Content = new StringContent("<html><body>Your IP address has been banned from this site.</body></html>")
+                Content = new StringContent(html)
             });
     }
 }
