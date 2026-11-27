@@ -344,20 +344,45 @@ internal static class JavCache
     }
 
     /// <summary>
-    /// Builds a person-name → gender index ("female"/"male") from every
-    /// cached scrape record, in one directory pass. Used by the collections
-    /// task, which needs gender knowledge for the entire library at once.
+    /// All performer indexes the collections task needs, built from a single
+    /// pass over the cache directory.
+    /// </summary>
+    /// <param name="Gender">Person name → "female"/"male".</param>
+    /// <param name="Alias">Performer spelling → the display name kept for it.</param>
+    /// <param name="Photos">Person name → portrait URL.</param>
+    internal readonly record struct PerformerIndexes(
+        Dictionary<string, string> Gender,
+        Dictionary<string, string> Alias,
+        Dictionary<string, string> Photos);
+
+    /// <summary>
+    /// Builds every performer index the collections task needs in one cache
+    /// pass: gender, name aliases and portrait URLs all come from the same
+    /// records, and reading a few hundred of them three times dominated the
+    /// task's startup.
     /// </summary>
     /// <param name="logger">Logger for diagnostics.</param>
-    /// <returns>Person name to gender mapping; names of unclear gender are absent.</returns>
-    internal static Dictionary<string, string> LoadGenderIndex(ILogger logger)
+    /// <returns>The three indexes.</returns>
+    internal static PerformerIndexes LoadIndexes(ILogger logger)
     {
-        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var records = ReadAllRecords(logger);
+        return new PerformerIndexes(
+            BuildGenderIndex(records),
+            BuildAliasIndex(records),
+            BuildPersonImageIndex(records));
+    }
+
+    /// <summary>Reads every cached scrape record once.</summary>
+    /// <param name="logger">Logger for unreadable files.</param>
+    /// <returns>The readable records.</returns>
+    private static List<JavVideo> ReadAllRecords(ILogger logger)
+    {
+        var records = new List<JavVideo>();
         try
         {
             if (!Directory.Exists(CacheDir))
             {
-                return index;
+                return records;
             }
 
             foreach (var file in Directory.EnumerateFiles(CacheDir, "*.json"))
@@ -365,34 +390,193 @@ internal static class JavCache
                 try
                 {
                     using var stream = File.OpenRead(file);
-                    var record = JsonSerializer.Deserialize<JavVideo>(stream, ReadOptions);
-                    if (record is null)
+                    if (JsonSerializer.Deserialize<JavVideo>(stream, ReadOptions) is { } record)
                     {
-                        continue;
-                    }
-
-                    foreach (var actress in record.Actresses)
-                    {
-                        index.TryAdd(actress, "female");
-                    }
-
-                    foreach (var actor in record.MaleActors)
-                    {
-                        index.TryAdd(actor, "male");
+                        records.Add(record);
                     }
                 }
                 catch (Exception ex)
                 {
-                    logger.LogDebug(ex, "Skipping unreadable cache file '{File}' while building the gender index", file);
+                    logger.LogDebug(ex, "Skipping unreadable cache file '{File}'", file);
                 }
             }
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed building the gender index");
+            logger.LogWarning(ex, "Failed reading the scrape cache");
+        }
+
+        return records;
+    }
+
+    /// <summary>
+    /// Builds a person-name → gender index ("female"/"male") from every
+    /// cached scrape record. Used by the collections task, which needs gender
+    /// knowledge for the entire library at once.
+    /// </summary>
+    /// <param name="logger">Logger for diagnostics.</param>
+    /// <returns>Person name to gender mapping; names of unclear gender are absent.</returns>
+    internal static Dictionary<string, string> LoadGenderIndex(ILogger logger)
+        => BuildGenderIndex(ReadAllRecords(logger));
+
+    /// <summary>Builds the gender index from already-read records.</summary>
+    /// <param name="records">Cached records.</param>
+    /// <returns>Person name to gender mapping.</returns>
+    internal static Dictionary<string, string> BuildGenderIndex(IEnumerable<JavVideo> records)
+    {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in records)
+        {
+            foreach (var actress in record.Actresses)
+            {
+                index.TryAdd(actress, "female");
+            }
+
+            foreach (var actor in record.MaleActors)
+            {
+                index.TryAdd(actor, "male");
+            }
         }
 
         return index;
+    }
+
+    /// <summary>Builds the person-image index from already-read records.</summary>
+    /// <param name="records">Cached records.</param>
+    /// <returns>Person name → portrait URL.</returns>
+    internal static Dictionary<string, string> BuildPersonImageIndex(IEnumerable<JavVideo> records)
+    {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in records)
+        {
+            foreach (var (name, url) in record.PersonImageUrls)
+            {
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    index.TryAdd(name, url);
+                }
+            }
+
+            // Records written before performer photos existed carry no photo
+            // map of their own, but they do name their cast — and the
+            // portraits the page embedded were kept. Replay the match for
+            // every performer so those records give up their photos too.
+            foreach (var name in record.Actresses.Concat(record.MaleActors))
+            {
+                if (index.ContainsKey(name))
+                {
+                    continue;
+                }
+
+                var url = SiteScraper.PersonImageFor(record, name);
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    index[name] = url!;
+                }
+            }
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// Builds a raw-name → canonical-name index from every cached scrape
+    /// record, joining spellings the sites themselves identify as one
+    /// performer: two names that share a star-page id are one person, such as
+    /// "Yua Mikami" and "Yua Mikami（三上悠亜）".
+    /// </summary>
+    /// <remarks>
+    /// Only a shared star id joins two names. Text similarity alone would weld
+    /// different performers together whenever they share a romanization
+    /// ("Aoi（葵）" and "Aoi（あおい）" are the case the site's own ids separate).
+    /// </remarks>
+    /// <param name="logger">Logger for unreadable cache files.</param>
+    /// <returns>Mergeable name → the display name kept for the group.</returns>
+    internal static Dictionary<string, string> LoadAliasIndex(ILogger logger)
+        => BuildAliasIndex(ReadAllRecords(logger));
+
+    /// <summary>
+    /// Computes the name → canonical-name map from the records' cast star ids.
+    /// </summary>
+    /// <param name="records">Cached scrape records.</param>
+    /// <returns>Only names that have at least one alias; others are absent.</returns>
+    internal static Dictionary<string, string> BuildAliasIndex(IEnumerable<JavVideo> records)
+    {
+        var namesByStar = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in records)
+        {
+            foreach (var (name, starId) in record.CastStarIds)
+            {
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(starId))
+                {
+                    continue;
+                }
+
+                if (!namesByStar.TryGetValue(starId, out var names))
+                {
+                    namesByStar[starId] = names = [];
+                }
+
+                if (!names.Contains(name, StringComparer.OrdinalIgnoreCase))
+                {
+                    names.Add(name);
+                }
+            }
+        }
+
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var names in namesByStar.Values)
+        {
+            if (names.Count < 2)
+            {
+                continue;
+            }
+
+            // Keep the plainest spelling as the visible name: fewest CJK
+            // characters first (a Latin credit over the same name with an
+            // alternate script), then the shortest, then a stable tie-break.
+            var canonical = names
+                .OrderBy(CjkRatio)
+                .ThenBy(n => n.Length)
+                .ThenBy(n => n, StringComparer.Ordinal)
+                .First();
+
+            foreach (var name in names)
+            {
+                if (!string.Equals(name, canonical, StringComparison.Ordinal))
+                {
+                    aliases[name] = canonical;
+                }
+            }
+        }
+
+        return aliases;
+    }
+
+    /// <summary>
+    /// Counts CJK characters as a fraction of the name's length, so a Latin
+    /// credit sorts ahead of the same name carrying a Japanese or Chinese
+    /// alternate script.
+    /// </summary>
+    /// <param name="name">Performer name.</param>
+    /// <returns>0 for a Latin-only name, up to 1 for an all-CJK one.</returns>
+    private static double CjkRatio(string name)
+    {
+        if (name.Length == 0)
+        {
+            return 0;
+        }
+
+        var cjk = 0;
+        foreach (var ch in name)
+        {
+            if (ch is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')
+            {
+                cjk++;
+            }
+        }
+
+        return (double)cjk / name.Length;
     }
 
     /// <summary>
@@ -405,66 +589,7 @@ internal static class JavCache
     /// <returns>Person name to photo URL mapping; names without a known
     /// photo are absent.</returns>
     internal static Dictionary<string, string> LoadPersonImageIndex(ILogger logger)
-    {
-        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            if (!Directory.Exists(CacheDir))
-            {
-                return index;
-            }
-
-            foreach (var file in Directory.EnumerateFiles(CacheDir, "*.json"))
-            {
-                try
-                {
-                    using var stream = File.OpenRead(file);
-                    var record = JsonSerializer.Deserialize<JavVideo>(stream, ReadOptions);
-                    if (record is null)
-                    {
-                        continue;
-                    }
-
-                    foreach (var (name, url) in record.PersonImageUrls)
-                    {
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            index.TryAdd(name, url);
-                        }
-                    }
-
-                    // Records written before performer photos existed carry
-                    // no photo map of their own, but they do name their cast
-                    // — and the portraits the page embedded were kept. Replay
-                    // the match for every performer so those records give up
-                    // their photos too.
-                    foreach (var name in record.Actresses.Concat(record.MaleActors))
-                    {
-                        if (index.ContainsKey(name))
-                        {
-                            continue;
-                        }
-
-                        var url = SiteScraper.PersonImageFor(record, name);
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            index[name] = url!;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogDebug(ex, "Skipping unreadable cache file '{File}' while building the person image index", file);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed building the person image index");
-        }
-
-        return index;
-    }
+        => BuildPersonImageIndex(ReadAllRecords(logger));
 
     /// <summary>
     /// Reads the cached scrape record for a library item, used by the
@@ -549,7 +674,11 @@ internal static class JavCache
     /// This is what lets a scan honour "never re-scrape metadata that has
     /// already been fetched": an item whose cached record is still valid was
     /// already scraped, whatever the item currently shows, so it is skipped
-    /// until the record ages out.
+    /// until the record ages out. The bounded repairs are the exception —
+    /// a title that still needs the configured language, and a record that
+    /// looks complete but has no cast — because those records are missing
+    /// something a later scrape can still supply; each repair is counted in
+    /// the record so it cannot repeat forever.
     /// </remarks>
     /// <param name="normalizedCode">Cache-key form of the product code.</param>
     /// <returns><c>true</c> when a record exists and is within its TTL.</returns>

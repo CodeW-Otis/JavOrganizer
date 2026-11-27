@@ -14,14 +14,15 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// Scheduled task that maintains the JavOrganizer collections from the
 /// scraped library:
 /// <list type="bullet">
-/// <item><b>Female Actresses</b> and <b>Male Actors</b> browse cards whose
-/// members are one collection per performer,</item>
+/// <item><b>Female Actresses</b>, <b>Male Actors</b> and <b>Studios</b> browse
+/// cards whose members are one collection per performer or studio,</item>
 /// <item>each <b>performer collection</b> holds that performer's own videos
 /// and carries their photo (or a cover from their own titles) as its
 /// poster,</item>
 /// <item>"Most Viewed" / "Most Liked" and "All Videos" / "Newest Releases"
 /// rankings aggregated across every user,</item>
-/// <item>optional collections per studio, genre and release year.</item>
+/// <item>optional collections per studio, genre and release year, each group
+/// switched on independently in the plugin settings.</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -55,6 +56,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     private const string NewestReleasesName = "Newest Releases (JavOrganizer)";
     private const string FemaleCardName = "Female Actresses (JavOrganizer)";
     private const string MaleCardName = "Male Actors (JavOrganizer)";
+    private const string StudiosCardName = "Studios (JavOrganizer)";
 
     /// <summary>
     /// Name prefixes that mark a collection as belonging to one performer.
@@ -96,7 +98,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     public string Key => "JavOrganizerCollectionsUpdate";
 
     /// <inheritdoc />
-    public string Description => "Rebuilds the Female Actresses and Male Actors browse cards (each performer gets their own collection inside them, with their photo as the poster), the Most Viewed / Most Liked rankings, and optional studio, genre and year collections.";
+    public string Description => "Rebuilds the selected JavOrganizer collections: the All Videos / Newest Releases cards, the Female Actresses, Male Actors and Studios browse cards (one collection per performer or studio inside, with a photo as the poster), and per studio, genre and year collections. Each group has its own switch in the plugin settings; a group that is switched off has its collections removed.";
 
     /// <inheritdoc />
     public string Category => "Library";
@@ -178,10 +180,29 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         // lists and the portraits the site embedded, which is the only
         // reliable source (Jellyfin people carry no gender and often no
         // image).
-        var genderByPerson = JavCache.LoadGenderIndex(_logger);
-        var photoByPerson = LoadPersonPhotos(items, genderByPerson);
+        var indexes = JavCache.LoadIndexes(_logger);
+        var genderByPerson = indexes.Gender;
+        var aliasByPerson = indexes.Alias;
+        var photoByPerson = LoadPersonPhotos(items, indexes.Photos);
 
-        var byPerson = CollectPerformers(items, genderByPerson);
+        // A performer written two ways ("Yua Mikami" / "Yua Mikami（三上悠亜）")
+        // is one person: the sites' star ids say so. Carry the photo across to
+        // the name that will be displayed, or the merged card loses its face.
+        foreach (var (rawName, canonicalName) in aliasByPerson)
+        {
+            if (!photoByPerson.ContainsKey(canonicalName) && photoByPerson.TryGetValue(rawName, out var photo))
+            {
+                photoByPerson[canonicalName] = photo;
+            }
+        }
+
+        var byPerson = CollectPerformers(items, genderByPerson, aliasByPerson);
+        if (aliasByPerson.Count > 0)
+        {
+            _logger.LogInformation(
+                "JavOrganizer collections: merged {Count} performer name spellings that share a star id",
+                aliasByPerson.Count);
+        }
         _logger.LogInformation(
             "JavOrganizer collections: {Videos} videos, {Performers} credited people, {Photos} with a cached photo",
             items.Count,
@@ -196,6 +217,13 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             cancellationToken.ThrowIfCancellationRequested();
             if (entry.Items.Count < Math.Max(1, config.MinVideosPerCollection))
             {
+                continue;
+            }
+
+            if (!IsPerformerGroupEnabled(entry.Gender, config))
+            {
+                // The person's wall is switched off, so no per-person
+                // collection is built for them this run.
                 continue;
             }
 
@@ -279,19 +307,25 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         // cards, and a performer card shows that performer's videos.
         // Performers are ordered by total views, most watched first.
         progress.Report(70);
-        var femaleMembers = GenderMembers(byPerson, "female", config.MinVideosPerCollection);
-        var maleMembers = GenderMembers(byPerson, "male", config.MinVideosPerCollection);
+        var femaleMembers = config.BuildActressCollections
+            ? GenderMembers(byPerson, "female", config.MinVideosPerCollection)
+            : [];
+        var maleMembers = config.BuildActorCollections
+            ? GenderMembers(byPerson, "male", config.MinVideosPerCollection)
+            : [];
 
+        // An empty member list also retires the card, so switching a wall off
+        // removes it rather than leaving an empty shell behind.
         await SyncNestedCardAsync(
             FemaleCardName,
-            femaleMembers,
+            ToCardMembers(femaleMembers),
             "Every actress in this library, each with her own collection inside this card — most watched first. Open one to see her videos.",
             FindTopPoster(femaleMembers),
             cancellationToken).ConfigureAwait(false);
 
         await SyncNestedCardAsync(
             MaleCardName,
-            maleMembers,
+            ToCardMembers(maleMembers),
             "Every male actor in this library, each with his own collection inside this card — most watched first. Open one to see his videos.",
             FindTopPoster(maleMembers),
             cancellationToken).ConfigureAwait(false);
@@ -299,18 +333,28 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         // ---- All Videos / Newest Releases ----
         progress.Report(78);
         var allOrdered = OrderByRelease(byId, [.. byId.Keys]);
-        await SyncMovieCollectionAsync(AllVideosName, allOrdered, $"Every scraped video in this library ({allOrdered.Count} titles), newest first.", cancellationToken).ConfigureAwait(false);
+        if (config.BuildAllVideosCollection)
+        {
+            await SyncMovieCollectionAsync(AllVideosName, allOrdered, $"Every scraped video in this library ({allOrdered.Count} titles), newest first.", cancellationToken).ConfigureAwait(false);
 
-        progress.Report(82);
-        await SyncMovieCollectionAsync(NewestReleasesName, allOrdered.Take(100).ToList(), "The 100 most recently released videos in this library.", cancellationToken).ConfigureAwait(false);
+            progress.Report(82);
+            await SyncMovieCollectionAsync(NewestReleasesName, allOrdered.Take(100).ToList(), "The 100 most recently released videos in this library.", cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            DeleteCollectionByName(AllVideosName);
+            DeleteCollectionByName(NewestReleasesName);
+        }
 
         // ---- Optional studio / genre / year collections ----
-        var groupsBuilt = 0;
+        var studioCollections = new List<(string Name, List<Guid> Ids, Guid CollectionId)>();
+        var genreCollections = new List<(string Name, List<Guid> Ids, Guid CollectionId)>();
+        var yearCollections = new List<(string Name, List<Guid> Ids, Guid CollectionId)>();
 
         if (config.BuildStudioCollections)
         {
             progress.Report(86);
-            groupsBuilt += await SyncGroupedCollectionsAsync(
+            studioCollections = await SyncGroupedCollectionsAsync(
                 items,
                 item => item.Studios,
                 "Studio: {0}",
@@ -318,11 +362,15 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                 config.MinVideosPerCollection,
                 cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            RetireGroupedCollections("Studio: ");
+        }
 
         if (config.BuildGenreCollections)
         {
             progress.Report(90);
-            groupsBuilt += await SyncGroupedCollectionsAsync(
+            genreCollections = await SyncGroupedCollectionsAsync(
                 items,
                 item => item.Genres,
                 "Genre: {0}",
@@ -330,11 +378,15 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                 config.MinVideosPerCollection,
                 cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            RetireGroupedCollections("Genre: ");
+        }
 
         if (config.BuildYearCollections)
         {
             progress.Report(94);
-            groupsBuilt += await SyncGroupedCollectionsAsync(
+            yearCollections = await SyncGroupedCollectionsAsync(
                 items,
                 item => item.ProductionYear is > 1900 ? [item.ProductionYear.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)] : [],
                 "Year: {0}",
@@ -342,6 +394,30 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                 config.MinVideosPerCollection,
                 cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            RetireGroupedCollections("Year: ");
+        }
+
+        // ---- Studio card (studio collections inside, like the performer walls) ----
+        var studioMembers = studioCollections
+            .Select(s => (s.Name, s.CollectionId))
+            .ToList();
+        ImageSource? studioPoster = null;
+        if (studioCollections.Count > 0)
+        {
+            var biggest = studioCollections.OrderByDescending(s => s.Ids.Count).First();
+            studioPoster = ResolvePoster(biggest.Name, biggest.Ids, byId, photoByPerson);
+        }
+
+        await SyncNestedCardAsync(
+            StudiosCardName,
+            studioMembers,
+            "Every studio in this library, each with its own collection inside this card. Open one to browse that studio's videos.",
+            studioPoster,
+            cancellationToken).ConfigureAwait(false);
+
+        var groupsBuilt = studioCollections.Count + genreCollections.Count + yearCollections.Count;
 
         _logger.LogInformation(
             "JavOrganizer collections updated: {People} performer collections ({Female} female / {Male} male), {Groups} studio/genre/year collections, {Viewed} most-viewed, {Liked} most-liked, {Total} all-videos, {Retired} stale performer collections retired",
@@ -351,7 +427,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             groupsBuilt,
             mostViewed.Count,
             mostLiked.Count,
-            allOrdered.Count,
+            config.BuildAllVideosCollection ? allOrdered.Count : 0,
             retiredPeople);
         progress.Report(100);
     }
@@ -369,15 +445,18 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
 
     /// <summary>
     /// Groups every credited performer by the videos they appear in.
-    /// Directors are included — they get their own collection too — while
-    /// anyone whose credit cannot be attributed keeps the neutral label.
+    /// Directors are grouped too, but a credit whose gender cannot be
+    /// resolved belongs to no wall and therefore gets no collection — it
+    /// still shows on the movie's cast row, which is where Jellyfin reads it.
     /// </summary>
     /// <param name="items">All scraped videos.</param>
     /// <param name="genderByPerson">Performer → gender index from the scrape cache.</param>
+    /// <param name="aliasByPerson">Performer spelling → the display name kept for it.</param>
     /// <returns>Performer name → credit entry.</returns>
     private Dictionary<string, PerformerEntry> CollectPerformers(
         List<Movie> items,
-        Dictionary<string, string> genderByPerson)
+        Dictionary<string, string> genderByPerson,
+        Dictionary<string, string> aliasByPerson)
     {
         var byPerson = new Dictionary<string, PerformerEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -390,17 +469,26 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
                     continue;
                 }
 
-                if (!byPerson.TryGetValue(person.Name, out var entry))
+                // One performer, one key: the sites' shared star ids decide
+                // which spellings mean the same person, so "Yua Mikami" and
+                // "Yua Mikami（三上悠亜）" end up on a single card.
+                var name = aliasByPerson.TryGetValue(person.Name, out var canonical)
+                    ? canonical
+                    : person.Name;
+
+                if (!byPerson.TryGetValue(name, out var entry))
                 {
                     var gender = genderByPerson.TryGetValue(person.Name, out var known)
                         ? known
-                        : GuessGender(person.Name, item);
+                        : genderByPerson.TryGetValue(name, out known)
+                            ? known
+                            : GuessGender(person.Name, item);
                     entry = new PerformerEntry
                     {
                         Gender = gender,
                         Role = DescribeRole(person, gender)
                     };
-                    byPerson[person.Name] = entry;
+                    byPerson[name] = entry;
                 }
 
                 if (!entry.Items.Contains(item.Id))
@@ -538,11 +626,10 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// still puts a face on the card.
     /// </summary>
     /// <param name="items">All scraped videos.</param>
-    /// <param name="genderByPerson">Performer → gender index.</param>
+    /// <param name="photos">Photo index from the cache pass this run already made.</param>
     /// <returns>Performer name → portrait URL.</returns>
-    private Dictionary<string, string> LoadPersonPhotos(List<Movie> items, Dictionary<string, string> genderByPerson)
+    private Dictionary<string, string> LoadPersonPhotos(List<Movie> items, Dictionary<string, string> photos)
     {
-        var photos = JavCache.LoadPersonImageIndex(_logger);
         if (photos.Count > 0)
         {
             return photos;
@@ -857,21 +944,21 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// opening it shows those performer cards.
     /// </summary>
     /// <param name="name">Card display name.</param>
-    /// <param name="members">Ordered performers with their collection ids.</param>
+    /// <param name="members">Ordered member collections with their ids.</param>
     /// <param name="overview">Overview text describing the card.</param>
     /// <param name="poster">Poster source for the card itself.</param>
     /// <param name="ct">Cancellation token.</param>
     private async Task SyncNestedCardAsync(
         string name,
-        List<(string Name, PerformerEntry Entry)> members,
+        List<(string Name, Guid CollectionId)> members,
         string overview,
         ImageSource? poster,
         CancellationToken ct)
     {
         if (members.Count == 0)
         {
-            // No performers of this gender in the library: retire the card
-            // rather than leaving an empty shell in the collection view.
+            // No members: retire the card rather than leaving an empty shell
+            // in the collection view.
             DeleteCollectionByName(name);
             return;
         }
@@ -886,21 +973,22 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         // link list: the collection manager's add path only accepts movies,
         // which is what previously turned these cards into long lists of
         // loose videos instead of performer collections.
+        //
+        // The child's ParentId is deliberately NOT written back. On Jellyfin
+        // 12 that update deletes the box set (the item is removed as soon as
+        // its parent changes), which emptied a freshly built wall while the
+        // card still logged its members as linked. The card's linked children
+        // are what Jellyfin resolves for the card's contents, so the
+        // relationship lives here only.
         var links = new List<LinkedChild>(members.Count);
-        foreach (var (_, entry) in members)
+        foreach (var (_, memberId) in members)
         {
-            var child = _libraryManager.GetItemById(entry.CollectionId) as BoxSet;
+            var child = _libraryManager.GetItemById(memberId) as BoxSet;
             if (child is null)
             {
                 continue;
             }
 
-            // Both sides of the relationship are persisted: the card points
-            // at the performer collection, and the performer collection
-            // records its parent card. Without the child-side parent id the
-            // card reports members it cannot actually open.
-            child.ParentId = collection.Id;
-            await child.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, ct).ConfigureAwait(false);
             links.Add(LinkedChild.Create(child));
         }
 
@@ -951,8 +1039,8 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     /// <param name="overviewFactory">Builds the overview from the group name and its ids.</param>
     /// <param name="minVideos">Minimum videos for the collection to exist.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>How many collections were written.</returns>
-    private async Task<int> SyncGroupedCollectionsAsync(
+    /// <returns>The collections written: display name, member ids and id.</returns>
+    private async Task<List<(string Name, List<Guid> Ids, Guid CollectionId)>> SyncGroupedCollectionsAsync(
         List<Movie> items,
         Func<Movie, IEnumerable<string>> groupSelector,
         string nameFormat,
@@ -982,7 +1070,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             }
         }
 
-        var built = 0;
+        var built = new List<(string Name, List<Guid> Ids, Guid CollectionId)>();
         var minimum = Math.Max(1, minVideos);
         foreach (var (group, ids) in groups)
         {
@@ -994,11 +1082,83 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
 
             var name = string.Format(System.Globalization.CultureInfo.InvariantCulture, nameFormat, group);
             var ordered = OrderByRelease(byId, ids);
-            await SyncMovieCollectionAsync(name, ordered, overviewFactory(group, ids), ct).ConfigureAwait(false);
-            built++;
+            var collection = await SyncMovieCollectionAsync(name, ordered, overviewFactory(group, ids), ct).ConfigureAwait(false);
+            if (collection is not null)
+            {
+                built.Add((name, ordered, collection.Id));
+            }
         }
 
         return built;
+    }
+
+    /// <summary>
+    /// Reports whether a collection is a performer collection that this run
+    /// did not rebuild, and is therefore stale.
+    /// </summary>
+    /// <remarks>
+    /// A collection this run created or reused is never retired, whatever its
+    /// name looks like. The name check alone is not safe on a Jellyfin version
+    /// that stores or reports collection names differently from the string the
+    /// plugin passed in: the retirement pass then deleted collections the same
+    /// run had just linked into a card, leaving the card pointing at nothing.
+    /// </remarks>
+    /// <param name="name">Collection display name.</param>
+    /// <param name="id">Collection item id.</param>
+    /// <param name="wantedNames">Performer collections this run rebuilt.</param>
+    /// <param name="wantedIds">Their item ids.</param>
+    /// <param name="knownPerformers">Names credited anywhere in the library.</param>
+    /// <returns><c>true</c> when the collection is stale and should be deleted.</returns>
+    internal static bool ShouldRetireCollection(
+        string? name,
+        Guid id,
+        HashSet<string> wantedNames,
+        HashSet<Guid> wantedIds,
+        HashSet<string> knownPerformers)
+        => !string.IsNullOrWhiteSpace(name)
+        && !wantedIds.Contains(id)
+        && !wantedNames.Contains(name)
+        && (PersonPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            || knownPerformers.Contains(name));
+
+    /// <summary>
+    /// Reports whether a performer's group has its own wall switched on. A
+    /// credit whose gender cannot be resolved (typically a director) belongs
+    /// to no wall, so it gets no collection: a prefix-less one would show up
+    /// in neither browse card and look like an orphan.
+    /// </summary>
+    /// <param name="gender">"female", "male" or an empty string.</param>
+    /// <param name="config">Current plugin configuration.</param>
+    /// <returns><c>true</c> when a per-performer collection should be built.</returns>
+    internal static bool IsPerformerGroupEnabled(string gender, PluginConfiguration config) => gender switch
+    {
+        "female" => config.BuildActressCollections,
+        "male" => config.BuildActorCollections,
+        _ => false
+    };
+
+    /// <summary>Projects performer entries onto a card's member list.</summary>
+    /// <param name="members">Performers with their built collections.</param>
+    /// <returns>The card's member tuples.</returns>
+    private static List<(string Name, Guid CollectionId)> ToCardMembers(
+        List<(string Name, PerformerEntry Entry)> members)
+        => [.. members.Select(m => (m.Name, m.Entry.CollectionId))];
+
+    /// <summary>
+    /// Deletes the grouped collections (studio, genre or year) whose setting
+    /// was just switched off, so the option removes what it used to build.
+    /// </summary>
+    /// <param name="prefix">The group's collection-name prefix.</param>
+    private void RetireGroupedCollections(string prefix)
+    {
+        foreach (var collection in ListCollections())
+        {
+            if (collection.Name is { } name
+                && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteCollection(collection);
+            }
+        }
     }
 
     /// <summary>
@@ -1055,29 +1215,31 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     }
 
     /// <summary>
-    /// Drops linked <i>collections</i> from a box set, leaving movies
-    /// alone. Used when a card is rebuilt: its previous performer links are
-    /// replaced wholesale rather than diffed, because the wanted member list
-    /// is the ordered set of performer collections.
+    /// Drops linked <i>collections</i> from a box set's link list, leaving
+    /// movies alone. Used when a card is rebuilt: its previous performer links
+    /// are replaced wholesale rather than diffed, because the wanted member
+    /// list is the ordered set of performer collections.
     /// </summary>
+    /// <remarks>
+    /// Only the link list is rewritten. Writing a child's ParentId back is
+    /// what made Jellyfin 12 delete the child box set, so the children are
+    /// never touched here.
+    /// </remarks>
     /// <param name="collection">The collection being cleared.</param>
     /// <param name="ct">Cancellation token.</param>
     private async Task ClearNestedLinksAsync(BoxSet collection, CancellationToken ct)
     {
-        var nested = collection.GetLinkedChildren().Where(c => c is not Movie).ToList();
-        if (nested.Count == 0)
+        var nestedIds = collection.GetLinkedChildren()
+            .Where(c => c is not Movie)
+            .Select(c => c.Id)
+            .ToHashSet();
+        if (nestedIds.Count == 0)
         {
             return;
         }
 
-        foreach (var child in nested)
-        {
-            child.ParentId = Guid.Empty;
-            await child.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, ct).ConfigureAwait(false);
-        }
-
         collection.LinkedChildren = collection.LinkedChildren
-            .Where(l => l.ItemId is null || !nested.Any(n => n.Id == l.ItemId.Value))
+            .Where(l => l.ItemId is null || !nestedIds.Contains(l.ItemId.Value))
             .ToArray();
         await collection.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, ct).ConfigureAwait(false);
     }
@@ -1100,19 +1262,24 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
             StringComparer.OrdinalIgnoreCase);
 
         var retired = 0;
+        var wantedIds = new HashSet<Guid>(
+            byPerson.Values
+                .Where(kv => kv.Items.Count >= minimum && kv.CollectionId != Guid.Empty)
+                .Select(kv => kv.CollectionId));
+
+        // Names credited in this library, whatever their gender. Older builds
+        // created prefix-less collections for credits with no resolvable
+        // gender (mostly directors); those belong to no wall and are retired
+        // here like any other stale performer collection.
+        var knownPerformers = new HashSet<string>(byPerson.Keys, StringComparer.OrdinalIgnoreCase);
+
         foreach (var collection in ListCollections())
         {
-            var name = collection.Name;
-            if (string.IsNullOrWhiteSpace(name)
-                || !PersonPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-                || wanted.Contains(name))
+            if (!ShouldRetireCollection(collection.Name, collection.Id, wanted, wantedIds, knownPerformers))
             {
                 continue;
             }
 
-            // A person whose name lost its gender prefix keeps their
-            // collection (it is still a performer collection), so only
-            // name-matched retirements are removed here.
             DeleteCollection(collection);
             retired++;
         }
@@ -1266,8 +1433,11 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
     }
 
     /// <summary>
-    /// Deletes a collection. Collections contain no media of their own, so
-    /// deleting one must never touch the underlying files.
+    /// Deletes a collection. Box sets carry no media of their own, so the
+    /// delete target is the collection's own folder under the server's
+    /// collections directory — never a movie. That folder is removed too:
+    /// leaving it behind lets the library scan resurrect the collection on
+    /// the next server start, which made switched-off groups come back.
     /// </summary>
     /// <param name="collection">The collection to delete.</param>
     private void DeleteCollection(BoxSet collection)
@@ -1276,7 +1446,7 @@ public sealed class JavCollectionsTask : IScheduledTask, IConfigurableScheduledT
         {
             _libraryManager.DeleteItem(collection, new DeleteOptions
             {
-                DeleteFileLocation = false
+                DeleteFileLocation = true
             });
             _logger.LogDebug("Deleted collection '{Name}'", collection.Name);
         }

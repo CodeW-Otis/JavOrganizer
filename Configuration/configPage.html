@@ -831,6 +831,21 @@
                                             <span class="jav-switch" aria-hidden="true"></span>
                                             <span class="jav-toggle-copy"><span class="jav-toggle-name">Also by year</span><span class="jav-toggle-desc">"Year: …" collections.</span></span>
                                         </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildAllVideosCollection" name="BuildAllVideosCollection">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">All Videos and Newest Releases collections</span><span class="jav-toggle-desc">The two library-wide cards.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildActressCollections" name="BuildActressCollections">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">Performer collections per actress</span><span class="jav-toggle-desc">The female card and "Actress: …" collections.</span></span>
+                                        </label>
+                                        <label class="jav-toggle">
+                                            <input type="checkbox" id="BuildActorCollections" name="BuildActorCollections">
+                                            <span class="jav-switch" aria-hidden="true"></span>
+                                            <span class="jav-toggle-copy"><span class="jav-toggle-name">Performer collections per male actor</span><span class="jav-toggle-desc">The male card and "Actor: …" collections.</span></span>
+                                        </label>
                                     </div>
                                 </div>
 
@@ -1338,6 +1353,9 @@
                                 document.querySelector('#BuildStudioCollections').checked = config.BuildStudioCollections;
                                 document.querySelector('#BuildGenreCollections').checked = config.BuildGenreCollections;
                                 document.querySelector('#BuildYearCollections').checked = config.BuildYearCollections;
+                                document.querySelector('#BuildAllVideosCollection').checked = config.BuildAllVideosCollection;
+                                document.querySelector('#BuildActressCollections').checked = config.BuildActressCollections;
+                                document.querySelector('#BuildActorCollections').checked = config.BuildActorCollections;
                                 document.querySelector('#MinVideosPerCollection').value = config.MinVideosPerCollection || 2;
                                 setDirty(false);
                                 Dashboard.hideLoadingMsg();
@@ -1424,6 +1442,9 @@
                                 config.BuildStudioCollections = document.querySelector('#BuildStudioCollections').checked;
                                 config.BuildGenreCollections = document.querySelector('#BuildGenreCollections').checked;
                                 config.BuildYearCollections = document.querySelector('#BuildYearCollections').checked;
+                                config.BuildAllVideosCollection = document.querySelector('#BuildAllVideosCollection').checked;
+                                config.BuildActressCollections = document.querySelector('#BuildActressCollections').checked;
+                                config.BuildActorCollections = document.querySelector('#BuildActorCollections').checked;
                                 config.MinVideosPerCollection = parseInt(document.querySelector('#MinVideosPerCollection').value, 10) || 2;
                                 ApiClient.updatePluginConfiguration(JavOrganizerConfig.pluginUniqueId, config).then(function (result) {
                                     Dashboard.processPluginConfigurationUpdateResult(result);

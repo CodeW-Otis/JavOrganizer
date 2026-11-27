@@ -378,16 +378,73 @@ Console.WriteLine("== JavBus age gate is a miss, not a record ==");
 // A browser without the age cookie gets JavBus's "Age Verification JavBus"
 // page instead of a detail page - the shape users report as "the site is a
 // shell, it moved to another domain". The scraper sends dv=1, which skips
-// the gate; should the gate ever answer anyway, it must be a clean miss so
-// JavBus passes its slot to the next site instead of contributing garbage.
+// the gate; should the gate ever answer anyway, it must be a clean miss.
 var gateScraper = new JavBusScraper(logger, "en");
-HtmlInjector.SetPage(gateScraper, """
+var gateHandler = HtmlInjector.SetPage(gateScraper, """
 <html><head><title>Age Verification JavBus - JavBus</title>
 <link rel="canonical" href="https://www.javbus.com/doc/driver-verify?referer=https%3A%2F%2Fwww.javbus.com%2Fen" /></head>
 <body><p>你是否已經成年?</p><form class="form1" method="post" action=""></form></body></html>
 """);
 var gateVideo = await gateScraper.FindByCodeAsync("MIAB-492", CancellationToken.None);
 Check(gateVideo is null, "JavBus age-gate page yields no record");
+Check(gateHandler.LastRequestCookie?.Contains("dv=1", StringComparison.Ordinal) == true,
+    $"JavBus requests carry the age cookie (got '{gateHandler.LastRequestCookie ?? "none"}')");
+gateScraper.Dispose();
+
+Console.WriteLine("== MissAvScraper cast parsing (localized labels, every performer) ==");
+// Issue #5: zh pages label cast 女優 / 男優, and one title can credit several
+// performers. The old XPath knew only "Actress:" and kept a single link, so a
+// zh library produced no performers at all and cast never became collections.
+var missav = new MissAvScraper(logger, "zh");
+var missavZhHtml = """
+<html><body>
+<h1 class="title">MIAB-492 Some Movie</h1>
+<span class="font-medium">MIAB-492</span>
+<div>
+  <span>女優:</span>
+  <a href="/actresses/a">Performer A</a>
+  <a href="/actresses/b">Performer B</a>
+  <span>男優:</span>
+  <a href="/actors/c">Actor C</a>
+  <span>メーカー:</span>
+  <a href="/makers/m">Studio M</a>
+  <span>ジャンル:</span>
+  <a href="/genres/1">Drama</a>
+  <a href="/genres/2">Romance</a>
+  <p><span>發行日期:</span> 2024-05-01</p>
+</div>
+</body></html>
+""";
+var missavZhDoc = new HtmlDocument();
+missavZhDoc.LoadHtml(missavZhHtml);
+var missavZhVideo = missav.ParseVideoPage(missavZhDoc, missavZhHtml);
+Check(missavZhVideo?.Actresses.Count == 2, $"zh cast keeps both actresses (got {missavZhVideo?.Actresses.Count})");
+Check(missavZhVideo?.Actresses.Contains("Performer A") == true
+    && missavZhVideo.Actresses.Contains("Performer B"), "zh cast names");
+Check(missavZhVideo?.MaleActors.Count == 1 && missavZhVideo.MaleActors[0] == "Actor C",
+    $"zh cast keeps 男優 separate (got {missavZhVideo?.MaleActors.Count})");
+Check(missavZhVideo?.Maker == "Studio M", $"zh maker label parses (got '{missavZhVideo?.Maker}')");
+Check(missavZhVideo?.Genres.Count == 2 && missavZhVideo.Genres.Contains("Romance"),
+    $"zh genre label keeps every genre (got {missavZhVideo?.Genres.Count})");
+Check(missavZhVideo?.ReleaseDate == new DateTime(2024, 5, 1),
+    $"zh release-date label parses (got '{missavZhVideo?.ReleaseDate:yyyy-MM-dd}')");
+
+var missavEnHtml = """
+<html><body>
+<h1 class="title">MIAB-492 Some Movie</h1>
+<span class="font-medium">MIAB-492</span>
+<div>
+  <span>Actress:</span>
+  <a href="/actresses/a">Performer A</a>
+  <a href="/actresses/b">Performer B</a>
+</div>
+</body></html>
+""";
+var missavEnDoc = new HtmlDocument();
+missavEnDoc.LoadHtml(missavEnHtml);
+var missavEnVideo = missav.ParseVideoPage(missavEnDoc, missavEnHtml);
+Check(missavEnVideo?.Actresses.Count == 2,
+    $"english cast keeps every link, not just the first (got {missavEnVideo?.Actresses.Count})");
 
 Console.WriteLine("== Error-title rejection (CloudFront 403 pages etc.) ==");
 Check(Jellyfin.Plugin.JavOrganizer.SiteScraper.IsErrorTitle("403 ERROR"), "403 ERROR rejected");
@@ -807,15 +864,15 @@ Check(JavMetadataProvider.NextLanguageRetries(englishTitle, javLibraryReached: t
 // it. Serving it within the six-hour thin-record grace made every rescan a
 // no-op and left the Japanese title in place, which is exactly the "English
 // naming still not fixed" symptom.
-var freshJapanese = new JavVideo { Code = "JUR-716", Title = jpTitle, CoverUrl = "https://x/c.jpg" };
+var freshJapanese = new JavVideo { Code = "JUR-716", Title = jpTitle, CoverUrl = "https://x/c.jpg", Actresses = ["Someone"] };
 Check(!JavMetadataProvider.ShouldServeCached(freshJapanese, withinThinGrace: true),
     "a fresh Japanese-titled record is re-scraped instead of served from cache");
 
-var freshEnglish = new JavVideo { Code = "JUR-716", Title = "JUR-716 An English Release", CoverUrl = "https://x/c.jpg" };
+var freshEnglish = new JavVideo { Code = "JUR-716", Title = "JUR-716 An English Release", CoverUrl = "https://x/c.jpg", Actresses = ["Someone"] };
 Check(JavMetadataProvider.ShouldServeCached(freshEnglish, withinThinGrace: true),
     "a fresh English-titled record is served from cache");
 
-var spentJapanese = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg", LanguageRetries = 3 };
+var spentJapanese = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg", Actresses = ["Someone"], LanguageRetries = 3 };
 Check(JavMetadataProvider.ShouldServeCached(spentJapanese, withinThinGrace: false),
     "a Japanese title that spent its retries is served instead of scraped forever");
 
@@ -1083,6 +1140,79 @@ Check(JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: true),
 Check(!JavScanTrigger.NeedsScrape(japanese, freshCode, wantEnglish: false),
     "a Japanese-titled item is left alone when the language is not English");
 
+// Issue #5: a cached record with a title and cover but no cast counts as
+// complete, so the item was never queued again and the library's actress
+// collections stayed empty. It is re-queued until the bounded cast-repair
+// budget is spent; after that the record is served again instead of churning.
+var castlessRecord = new JavVideo
+{
+    Code = "ZZZ-020",
+    Title = "ZZZ-020 Cover Only",
+    CoverUrl = "https://x/c.jpg",
+    Genres = ["Drama"]
+};
+Check(JavMetadataProvider.NeedsCastRepair(castlessRecord), "a record with no cast needs repair");
+Check(JavMetadataProvider.CastRepairPending(castlessRecord), "and its repair budget is unspent");
+Check(!JavMetadataProvider.ShouldServeCached(castlessRecord, withinThinGrace: true),
+    "a castless record is not served from cache while repairs remain");
+castlessRecord.CastRetries = JavMetadataProvider.MaxCastRetries;
+Check(!JavMetadataProvider.CastRepairPending(castlessRecord), "a spent cast budget stops the retries");
+Check(JavMetadataProvider.ShouldServeCached(castlessRecord, withinThinGrace: false),
+    "so the castless record is served instead of re-scraped forever");
+Check(JavMetadataProvider.ShouldServeCached(
+        new JavVideo { Code = "ZZZ-021", Title = "T", Actresses = ["Someone"] },
+        withinThinGrace: false),
+    "a record with cast is served normally");
+
+// The counter only advances when a site actually answered: a round where
+// every site timed out could not have produced cast, so it must not spend
+// the budget.
+var castlessCached = new JavVideo { Code = "ZZZ-020", Title = "T" };
+Check(JavMetadataProvider.NextCastRetries(castlessCached, anySiteReached: true) == 1,
+    "a cast repair counts when a site answered");
+Check(JavMetadataProvider.NextCastRetries(castlessCached, anySiteReached: false) == 0,
+    "a cast repair nobody answered does not spend the budget");
+Check(JavMetadataProvider.NextCastRetries(
+        new JavVideo { Code = "ZZZ-021", Title = "T", MaleActors = ["Someone"] },
+        anySiteReached: true) == 0,
+    "a record that already has cast never spends the budget");
+
+// Wiring: the normal scan's queue decision reads that budget from the cached
+// record, so the repair is bounded on disk and not just in memory.
+const string castlessCode = "ZZZ-020";
+var castlessItem = MakeMovie("ZZZ-020 A Cover Only Title", castlessCode, g: ["Drama"], s: ["Studio"], o: "Provider: JavOrganizer");
+var castlessProbe = new JavVideo
+{
+    Code = castlessCode,
+    Title = "ZZZ-020 A Cover Only Title",
+    CoverUrl = "https://x/c.jpg",
+    Genres = ["Drama"]
+};
+try
+{
+    JavCache.TryWrite(JavCodeParser.Normalize(castlessCode), castlessProbe, new StubLogger());
+    Check(JavScanTrigger.NeedsScrape(castlessItem, castlessCode, wantEnglish: false),
+        "an item whose cached scrape has no cast is queued again");
+
+    castlessProbe.CastRetries = JavMetadataProvider.MaxCastRetries;
+    JavCache.TryWrite(JavCodeParser.Normalize(castlessCode), castlessProbe, new StubLogger());
+    Check(!JavScanTrigger.NeedsScrape(castlessItem, castlessCode, wantEnglish: false),
+        "and is left alone once the repair budget is spent");
+
+    // A fresh not-found marker means the sites were asked recently and had
+    // nothing at all, so the repair waits for it to expire instead of making
+    // every scan re-read the marker through a pointless refresh.
+    castlessProbe.CastRetries = 0;
+    JavCache.TryWrite(JavCodeParser.Normalize(castlessCode), castlessProbe, new StubLogger());
+    JavCache.TryWriteNegative(JavCodeParser.Normalize(castlessCode), new StubLogger());
+    Check(!JavScanTrigger.NeedsScrape(castlessItem, castlessCode, wantEnglish: false),
+        "a fresh not-found marker holds the repair until it expires");
+}
+finally
+{
+    JavCache.Purge(JavCodeParser.Normalize(castlessCode));
+}
+
 Console.WriteLine("== Collections like scoring (regression: favorite overwritten by like) ==");
 // A user who favorited AND liked a video contributes 3 + 2 = 5. The two
 // signals used to be written one after the other, so the like overwrote the
@@ -1093,6 +1223,61 @@ Check(JavCollectionsTask.LikeScore(true, null) == 3, "favorite with unset like s
 Check(JavCollectionsTask.LikeScore(false, true) == 2, "like alone scores 2");
 Check(JavCollectionsTask.LikeScore(false, false) == 0, "neither scores 0");
 Check(JavCollectionsTask.LikeScore(false, null) == 0, "unset like scores 0");
+
+Console.WriteLine("== Collection retirement safety (regression: cards left pointing at nothing) ==");
+// A retirement pass whose name check disagreed with what the server had
+// stored deleted the performer collections the same run had just linked into
+// the browse cards: the card logged "9 performers linked" while every link
+// pointed at an item that no longer existed, so the actress wall opened empty.
+var retireWantedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Actress: Iioka Kanako" };
+var keeperId = Guid.NewGuid();
+var retireWantedIds = new HashSet<Guid> { keeperId };
+var knownPerformers = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Inugami Ryou" };
+Check(!JavCollectionsTask.ShouldRetireCollection("Actress: Iioka Kanako", keeperId, retireWantedNames, retireWantedIds, knownPerformers),
+    "a collection this run linked is kept");
+Check(!JavCollectionsTask.ShouldRetireCollection("Actress: Renamed On The Server", keeperId, retireWantedNames, retireWantedIds, knownPerformers),
+    "an id this run rebuilt is kept even when the stored name differs");
+Check(JavCollectionsTask.ShouldRetireCollection("Actress: Below The Minimum", Guid.NewGuid(), retireWantedNames, retireWantedIds, knownPerformers),
+    "an untouched performer collection below the minimum is retired");
+Check(JavCollectionsTask.ShouldRetireCollection("Inugami Ryou", Guid.NewGuid(), retireWantedNames, retireWantedIds, knownPerformers),
+    "a prefix-less collection named after a credited person is retired");
+Check(!JavCollectionsTask.ShouldRetireCollection("My Own Collection", Guid.NewGuid(), retireWantedNames, retireWantedIds, knownPerformers),
+    "a collection that matches no credited name is never retired");
+
+Console.WriteLine("== Performer name merging (regression: one actress, several cards) ==");
+// The sites' own star ids decide which spellings mean one performer, so
+// "Yua Mikami" and "Yua Mikami（三上悠亜）" share a card. Names that merely
+// share a romanization but have different ids stay apart — "Aoi（葵）" and
+// "Aoi（あおい）" is the case text similarity would get wrong.
+var sameStarRecord = new JavVideo { Code = "AAA-001", Title = "t" };
+sameStarRecord.CastStarIds["Yua Mikami"] = "uly";
+sameStarRecord.CastStarIds["Yua Mikami（三上悠亜）"] = "uly";
+var differentStarRecord = new JavVideo { Code = "AAA-002", Title = "t" };
+differentStarRecord.CastStarIds["Aoi（葵）"] = "aoi1";
+differentStarRecord.CastStarIds["Aoi（あおい）"] = "aoi2";
+var mergeAliases = JavCache.BuildAliasIndex([sameStarRecord, differentStarRecord]);
+Check(mergeAliases.TryGetValue("Yua Mikami（三上悠亜）", out var mergedName) && mergedName == "Yua Mikami",
+    $"an alternate-script spelling merges onto the Latin name (got '{mergedName}')");
+Check(!mergeAliases.ContainsKey("Yua Mikami"), "the kept spelling is not an alias of itself");
+Check(!mergeAliases.ContainsKey("Aoi（葵）") && !mergeAliases.ContainsKey("Aoi（あおい）"),
+    "different star ids are never merged on name similarity alone");
+Check(JavCache.BuildAliasIndex([sameStarRecord]).Count == 1,
+    "one merged pair produces exactly one alias");
+Check(JavCache.BuildAliasIndex([differentStarRecord]).Count == 0,
+    "records whose names have distinct star ids produce no aliases");
+
+Console.WriteLine("== Collection group switches ==");
+// Disabling a group must stop its per-performer collections: with the switch
+// off the collections task skips that gender, and the retirement pass then
+// removes the cards it used to build.
+var sw = new PluginConfiguration
+{
+    BuildActressCollections = false,
+    BuildActorCollections = true
+};
+Check(!JavCollectionsTask.IsPerformerGroupEnabled("female", sw), "actress switch off skips female performers");
+Check(JavCollectionsTask.IsPerformerGroupEnabled("male", sw), "a switched-on actor group is still built");
+Check(!JavCollectionsTask.IsPerformerGroupEnabled(string.Empty, sw), "a credit with no resolvable gender gets no collection");
 
 Console.WriteLine("== Scrape-round reach isolation (regression: cross-code contamination) ==");
 // Scraper instances are shared by every parallel worker. One code's
@@ -1377,19 +1562,35 @@ internal static class HtmlInjector
     /// <summary>Replaces the scraper's HTTP client with a scripted-response one.</summary>
     /// <param name="scraper">Scraper whose client is replaced.</param>
     /// <param name="html">HTML the scripted client returns for every request.</param>
-    internal static void SetPage(SiteScraper scraper, string html)
+    /// <returns>The handler, so the test can assert on the request it received.</returns>
+    internal static ScriptedHtmlHandler SetPage(SiteScraper scraper, string html)
     {
-        var field = typeof(SiteScraper).GetField("_http", BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(scraper, new HttpClient(new ScriptedHtmlHandler(html)));
+        var field = typeof(SiteScraper).GetField("_http", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("SiteScraper._http not found; the scripted client cannot be injected.");
+        var previous = (HttpClient?)field.GetValue(scraper);
+        var handler = new ScriptedHtmlHandler(html);
+        field.SetValue(scraper, new HttpClient(handler));
+        previous?.Dispose();
+        return handler;
     }
 
-    private sealed class ScriptedHtmlHandler(string html) : HttpMessageHandler
+    /// <summary>Answers every request with one fixed page.</summary>
+    internal sealed class ScriptedHtmlHandler(string html) : HttpMessageHandler
     {
+        /// <summary>Cookie header of the most recent request, for header assertions.</summary>
+        internal string? LastRequestCookie { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            LastRequestCookie = request.Headers.TryGetValues("Cookie", out var values)
+                ? string.Join("; ", values)
+                : null;
+
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
                 Content = new StringContent(html)
             });
+        }
     }
 }
 

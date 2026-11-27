@@ -5,15 +5,34 @@
 // reports, per site, whether the site was reached and what metadata came back.
 //
 // Usage:
-//   LiveScrape <CODE> [siteKey ...]
+//   LiveScrape <CODE> [--lang zh] [siteKey ...]
 //
-// With no site keys every registered scraper is exercised.
+// With no site keys every registered scraper is exercised. --lang selects the
+// page language the scrapers ask for, which is how the localized markup
+// (zh/tw labels) gets verified against the live sites.
 
 using System.Diagnostics;
 using Jellyfin.Plugin.JavOrganizer;
 
 var code = args.Length > 0 ? args[0] : "MIAB-492";
-var only = args.Skip(1).ToArray();
+
+// Pull --lang out of the site list so it can appear anywhere after the code.
+var lang = "en";
+var rest = args.Skip(1).ToList();
+var langFlag = rest.FindIndex(a => a.Equals("--lang", StringComparison.OrdinalIgnoreCase));
+if (langFlag >= 0)
+{
+    if (langFlag + 1 >= rest.Count)
+    {
+        Console.WriteLine("--lang needs a value, e.g. --lang zh");
+        return 2;
+    }
+
+    lang = rest[langFlag + 1];
+    rest.RemoveRange(langFlag, 2);
+}
+
+var only = rest.ToArray();
 
 // The scrapers read Plugin.EffectiveConfiguration, which falls back to
 // built-in defaults when no plugin instance exists — exactly this harness's
@@ -29,7 +48,7 @@ Console.WriteLine($"FlareSolverr: {(flareSolverr.Length == 0 ? "(none configured
 Console.WriteLine();
 
 var logger = new ConsoleLogger();
-var scrapers = BuildScrapers(logger, only);
+var scrapers = BuildScrapers(logger, only, lang);
 
 Console.WriteLine($"Sites to exercise: {scrapers.Count}");
 foreach (var (key, s) in scrapers)
@@ -165,9 +184,8 @@ if (people.Count > 0)
 
 return 0;
 
-static List<(string Key, SiteScraper Scraper)> BuildScrapers(ConsoleLogger logger, string[] only)
+static List<(string Key, SiteScraper Scraper)> BuildScrapers(ConsoleLogger logger, string[] only, string lang)
 {
-    var lang = "en";
     var all = new List<(string, SiteScraper)>
     {
         ("javlibrary", new JavLibraryScraper(logger, lang)),

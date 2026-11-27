@@ -39,6 +39,9 @@ public class PluginConfiguration : BasePluginConfiguration
         MaxConcurrentScrapes = 4;
         MaxSitesPerScrape = 8;
         BuildCollections = true;
+        BuildAllVideosCollection = true;
+        BuildActressCollections = true;
+        BuildActorCollections = true;
         MinVideosPerCollection = 2;
         CacheHours = 720; // 30 days.
         NegativeCacheHours = 168; // 1 week.
@@ -205,6 +208,43 @@ public class PluginConfiguration : BasePluginConfiguration
     /// per release year (e.g. "Year: 2024").
     /// </summary>
     public bool BuildYearCollections { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the collections task builds the
+    /// library-wide "All Videos (JavOrganizer)" and "Newest Releases
+    /// (JavOrganizer)" cards.
+    /// </summary>
+    /// <remarks>
+    /// These two cards cover the whole scraped library, so
+    /// <see cref="MinVideosPerCollection"/> does not apply to them.
+    /// </remarks>
+    public bool BuildAllVideosCollection { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the collections task builds the
+    /// "Female Actresses (JavOrganizer)" card and the per-actress collections
+    /// nested under it.
+    /// </summary>
+    /// <remarks>
+    /// Turning this off leaves the male wall and the library-wide cards
+    /// untouched; each actress still needs
+    /// <see cref="MinVideosPerCollection"/> titles before her own collection
+    /// is created.
+    /// </remarks>
+    public bool BuildActressCollections { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the collections task builds the
+    /// "Male Actors (JavOrganizer)" card and the per-actor collections nested
+    /// under it.
+    /// </summary>
+    /// <remarks>
+    /// Turning this off leaves the actress wall and the library-wide cards
+    /// untouched; each actor still needs
+    /// <see cref="MinVideosPerCollection"/> titles before his own collection
+    /// is created.
+    /// </remarks>
+    public bool BuildActorCollections { get; set; }
 
     /// <summary>
     /// Gets or sets the minimum number of videos a person must appear in

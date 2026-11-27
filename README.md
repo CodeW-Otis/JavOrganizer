@@ -385,6 +385,9 @@ Available in **Dashboard → Plugins → JavOrganizer**. The page is split into 
 | **Not-found cache** | How long a failed lookup is remembered, in hours (default 168 = 7 days; `0` disables). |
 | **Build collections** | Create the performer, Most Viewed / Most Liked, All Videos and Newest Releases collections. |
 | **Studio / Genre / Year collections** | Optional extra groupings built by the collections task when their switch is on. |
+| **All Videos / Newest Releases collections** | Build the two library-wide cards, All Videos (JavOrganizer) and Newest Releases (JavOrganizer) (default on). |
+| **Female performer collections** | Build the Female Actresses (JavOrganizer) card and one collection per actress (default on). |
+| **Male performer collections** | Build the Male Actors (JavOrganizer) card and one collection per male actor (default on). |
 | **Min Videos per Collection** | A performer/studio/genre needs at least this many titles before a collection is created (default 2). |
 | **FlareSolverr URL** | Base URL of the solver, with or without `/v1`. See [Setting up FlareSolverr](#️-setting-up-flaresolverr). |
 | **FlareSolverr Executable Path** | Optional managed binary the plugin starts/stops with the server. Leave empty for Docker/remote. |
@@ -446,6 +449,14 @@ runs daily, also runnable on demand) that builds:
 |---|---|
 | **Female Actresses (JavOrganizer)** | One card per actress — ordered by **total views** across their titles — and each card opens that performer's whole filmography |
 | **Male Actors (JavOrganizer)** | The same for male actors |
+| **Studios (JavOrganizer)** | The same shape for studios, built when **Studio collections** is on: card → studio → that studio's videos |
+
+Each wall has its own switch: **Female performer collections** and **Male
+performer collections** in the plugin settings turn the two cards — and the
+per-performer collections nested under them — on or off independently.
+**All Videos / Newest Releases collections** and the studio, genre and year
+groupings have their own switches too, and switching a group off removes the
+collections it used to build.
 
 Open either card in the library and you see the **performer cards**
 (actress/actor collections, each with the performer's photo as its
@@ -477,6 +488,10 @@ Male Actors (JavOrganizer)
 - **If no site published a portrait for a performer**, the card falls back
   to the cover of one of their own titles rather than staying blank — so a
   performer with videos always has an image.
+- **Spellings of one name are merged** when the sites' own star ids tie them
+  together, so "Yua Mikami" and "Yua Mikami（三上悠亜）" become one card.
+  Names that merely share a romanization but have different star ids stay
+  separate — the ids are what tell "Aoi（葵）" and "Aoi（あおい）" apart.
 - Photos are matched to the right performer through the star id shared with
   their credit link, the performer's name inside the portrait file name, or
   the image's label. Records scraped before this matching existed still
@@ -490,6 +505,9 @@ Male Actors (JavOrganizer)
 - **Newest Releases (JavOrganizer)** — the 100 most recently released.
 - Optional: per studio ("Studio: …"), per genre ("Genre: …"), per release
   year ("Year: …") — toggle in the plugin settings.
+- **All Videos / Newest Releases** is switched separately from the performer
+  walls, so you can keep the two library-wide cards without the per-person
+  ones, or the other way round.
 
 **Sorting inside Jellyfin:** every collection carries a defined order
 (newest release first / most-viewed first), and Jellyfin's own sort options
@@ -577,6 +595,9 @@ You might have an orphaned `chromedriver.exe` process. Kill it in Task Manager, 
 
 **Wrong language for titles.**
 The plugin tries to grab English titles if available. If it can't find one across the enabled sites, it will fall back to Japanese. Make sure JavLibrary is enabled and FlareSolverr is working. Any Japanese-titled items are also picked up and re-scraped automatically by the scheduled scans until an English variant is found.
+
+**Movies show a title and cover but no performers, so no actress collections appear.**
+An actress collection needs the performers in each movie's metadata first. The plugin groups the cast each site credits — MissAV labels it per gender, in the page's own language — and a cached record that came back without any cast is re-scraped automatically by the scheduled scans, twice per code, so a title no site credits does not get re-fetched forever. If collections are still empty, check that a cast-carrying source (MissAV or JavDB) is enabled, then run the collections task from the settings page. Actress and male-actor cards are separate, and male performers are never mixed into the actress wall.
 
 ## 🔗 Compatibility notes
 
