@@ -8,6 +8,78 @@
     "category": "Metadata",
     "versions": [
       {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-124-v1.5.6.0.zip",
+        "checksum": "2dd5403935bf90c97c60943e9689a0d6",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "12.3.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-123-v1.5.6.0.zip",
+        "checksum": "16581d258c29fd1104ae245c4cc3bf48",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "12.2.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-122-v1.5.6.0.zip",
+        "checksum": "71886af9ba6803fdab87d05229563b21",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-121-v1.5.6.0.zip",
+        "checksum": "607c17d89df7ca808bdd9240fcb2f027",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-120-v1.5.6.0.zip",
+        "checksum": "38fb6223e013e92254a6d6c6a591e4f0",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "10.11.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-1011-v1.5.6.0.zip",
+        "checksum": "04c6dba6af822da0172a2e5cf94fa711",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-1010-v1.5.6.0.zip",
+        "checksum": "3471058e159b238937c142a32f26a8e0",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "10.9.11.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-109-v1.5.6.0.zip",
+        "checksum": "fea6315d719c2093458823add5a3f043",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
+        "version": "1.5.6",
+        "changelog": "Localized MissAV pages (zh/tw) now parse their cast labels and keep every credited performer, so actress collections can be built from Chinese metadata; a cached record that came back with a title and cover but no performers is re-scraped automatically (bounded per code) so existing libraries heal on a normal scan. Collections are fixed on Jellyfin 12: performer cards no longer delete their own box sets, deleted collections no longer reappear after a restart, and a switched-off group actually disappears. Adds per-group switches (All Videos/Newest, actress, male actor, studio, genre, year), a Studios card that groups per-studio collections, performer name spellings merged by the sites' star ids, and a single-pass cache index that makes the collections task finish in about a second.",
+        "targetAbi": "10.8.13.0",
+        "sourceUrl": "https://github.com/CodeW-Otis/JavOrganizer/releases/download/v1.5.6/JavOrganizer-108-v1.5.6.0.zip",
+        "checksum": "15bbc66dda258a5beb0733e55101e65c",
+        "timestamp": "2026-11-27T21:24:38Z"
+      },
+      {
         "version": "1.5.5",
         "changelog": "A rebuilt settings console with a sticky section nav, live scan progress, site-status board and FlareSolverr test; admin-only scan endpoints; correctness fixes for Most Liked scoring, per-call site reachability, Japanese-title retries and cache freshness; rejects placeholder data: image URLs that would fail the image refresh; and supports Jellyfin 12.3 and 12.4. Adds a cross-platform build.sh and compiles the source against every supported server line through 12.4.0.",
         "targetAbi": "12.4.0.0",

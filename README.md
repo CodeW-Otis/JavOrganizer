@@ -9,7 +9,7 @@
 <br>
 
 [![Build](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml/badge.svg)](https://github.com/CodeW-Otis/JavOrganizer/actions/workflows/build.yml)
-[![Release](https://img.shields.io/badge/Release-v1.5.5-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
+[![Release](https://img.shields.io/badge/Release-v1.5.6-blue.svg)](https://github.com/CodeW-Otis/JavOrganizer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Jellyfin 10.8 and later](https://img.shields.io/badge/Jellyfin-10.8%2B-00a4dc.svg)](#build-matrix--pick-the-build-matching-your-server)
 [![.NET 6 | 8](https://img.shields.io/badge/.NET-6%20%7C%208-512bd4.svg)](#build-matrix--pick-the-build-matching-your-server)
@@ -626,6 +626,39 @@ nested under the two browse cards, 198/198 performer collections carrying a
 poster, and all three levels (card → performer → videos) browsing correctly.
 
 ## 📋 Changelog
+
+### 1.5.6
+
+**Localized cast, castless-record repair, and collections that survive Jellyfin 12.**
+
+**Localized metadata.** MissAV labels cast — and maker, label, genre and release
+date — in the page's own language, so a `zh`/`tw` library used to come back with a
+title and cover but no performers. The parser now matches the localized labels
+(女優 / 男優 and friends) and keeps every credited performer, not just the first.
+
+**Castless records heal themselves.** A cached scrape that came back with a title
+and cover but no cast counted as complete, so the scan never revisited it and the
+actress groups stayed empty. Those records are re-scraped automatically — up to
+twice per code, and a retry only counts when a site actually answered — so an
+existing library fixes itself on a normal scan, without a manual re-scrape.
+
+**Collections on Jellyfin 12.** The collections task wrote each member's parent
+back to the repository, which makes Jellyfin 12 delete the member box set, so a
+performer card could log "9 performers linked" and still open empty. That write is
+gone, retired collections are deleted durably (folder included, so they no longer
+come back after a restart), and retirement matches by id as well as by name.
+
+**New collection options.** All Videos / Newest Releases, actress collections and
+male-actor collections each have their own switch next to the existing studio,
+genre and year ones, and switching a group off removes what it used to build.
+Studio collections are grouped by a **Studios (JavOrganizer)** card with the same
+card → studio → videos shape as the performer walls. Performer spellings that share
+a site star id are merged onto one card ("Yua Mikami" and "Yua Mikami（三上悠亜）"),
+while different star ids are never merged on name similarity alone.
+
+**Faster collections.** One cache pass builds the gender, alias and photo indexes
+(three full passes before), so the task finishes in about a second on a 74-title
+library.
 
 ### 1.5.5
 

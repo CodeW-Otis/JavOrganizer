@@ -51,7 +51,7 @@ $dist = Join-Path $root 'dist'
 
 $pluginGuid = 'e9e8bfe2-5e0f-4d1a-9a3c-7b7ea4e7581c'
 $pluginName = 'JavOrganizer'
-$pluginVersion = '1.5.5.0'
+$pluginVersion = '1.5.6.0'
 
 # Every Jellyfin version line the plugin supports, the build that serves it
 # and the targetAbi that build advertises for that line. A server accepts a
