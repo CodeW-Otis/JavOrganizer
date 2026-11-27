@@ -79,12 +79,14 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
         {
             Code = code,
             Title = SelectText(doc, "//h1[contains(@class,'title')]|//div[contains(@class,'title')]//span[contains(@class,'font-medium')][1]"),
-            Maker = SelectText(doc, "//span[text()='Maker:']/following-sibling::a[1]"),
-            Director = SelectText(doc, "//span[text()='Director:']/following-sibling::a[1]"),
-            Label = SelectText(doc, "//span[text()='Label:']/following-sibling::a[1]"),
+            Maker = TextAfterLabel(doc, MakerLabels),
+            Director = TextAfterLabel(doc, DirectorLabels),
+            Label = TextAfterLabel(doc, LabelLabels),
         };
 
-        // "Release Date:" is rendered as plain text in the meta block.
+        // "Release Date:" is rendered as plain text in the meta block, and the
+        // label is translated with the page for the same reason as the cast
+        // labels above.
         var dateText = SelectText(doc, "//span[contains(@id,'release_date')]|//time");
         video.ReleaseDate = ParseDate(dateText);
         if (video.ReleaseDate is null)
@@ -96,14 +98,17 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
             }
         }
 
-        // Gender-separated cast: explicit "Actress:" and "Actor:" labels.
-        video.Actresses = SelectTexts(doc, "//span[text()='Actress:']/following-sibling::a[1]");
-        video.MaleActors = SelectTexts(doc, "//span[text()='Actor:']/following-sibling::a[1]");
+        // Gender-separated cast. MissAV translates the label with the page
+        // (zh/tw pages say 女優 / 男優), and one title can credit several
+        // performers, so every link after the label counts until the next
+        // field's label ends the run.
+        video.Actresses = TextsAfterLabels(doc, ActressLabels);
+        video.MaleActors = TextsAfterLabels(doc, ActorLabels);
 
         // Cast portraits (img title=name) feed the person image provider.
         CollectPersonImages(doc, video);
 
-        video.Genres = SelectTexts(doc, "//span[text()='Genre:']/following-sibling::a");
+        video.Genres = TextsAfterLabels(doc, GenreLabels);
 
         video.CoverUrl = ToAbsoluteImageUrl(SelectAttribute(doc, "//img[contains(@src,'/okcdn') or contains(@class,'object-cover')]", "src"));
 
@@ -114,6 +119,102 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
         }
 
         return video;
+    }
+
+    /// <summary>Cast labels MissAV uses for women, English and CJK pages.</summary>
+    private static readonly string[] ActressLabels = ["Actress:", "女優:", "女優："];
+
+    /// <summary>Cast labels MissAV uses for men, English and CJK pages.</summary>
+    private static readonly string[] ActorLabels = ["Actor:", "男優:", "男優："];
+
+    /// <summary>
+    /// Maker labels. MissAV translates the detail-page labels with the page
+    /// language, so the English label alone leaves maker/studio empty on a
+    /// Chinese or Japanese page even though the page carries it.
+    /// </summary>
+    private static readonly string[] MakerLabels =
+        ["Maker:", "メーカー:", "メーカー：", "廠商:", "片商:", "发行商:", "發行商:", "發行:", "发行:"];
+
+    /// <summary>Director labels, English and CJK.</summary>
+    private static readonly string[] DirectorLabels = ["Director:", "監督:", "監督：", "导演:", "導演:"];
+
+    /// <summary>Label/publisher labels, English and CJK.</summary>
+    private static readonly string[] LabelLabels = ["Label:", "レーベル:", "レーベル：", "厂牌:", "廠牌:", "品牌:"];
+
+    /// <summary>Genre labels, English and CJK.</summary>
+    private static readonly string[] GenreLabels =
+        ["Genre:", "ジャンル:", "ジャンル：", "類別:", "类别:", "類型:", "类型:", "題材:", "题材:"];
+
+    /// <summary>
+    /// Reads the first link that follows the given label — the shape every
+    /// single-value field (maker, director, label) uses.
+    /// </summary>
+    /// <param name="doc">Parsed detail page.</param>
+    /// <param name="labels">Accepted labels for the field, colon included.</param>
+    /// <returns>The link text, or an empty string when the label is absent.</returns>
+    private static string TextAfterLabel(HtmlDocument doc, string[] labels)
+    {
+        var values = TextsAfterLabels(doc, labels);
+        return values.Count > 0 ? values[0] : string.Empty;
+    }
+
+    /// <summary>
+    /// Collects the links that belong to the given label: each contiguous
+    /// link after it is one value (several performers, several genres), and
+    /// the next element (the following field's label) ends the run.
+    /// </summary>
+    /// <param name="doc">Parsed detail page.</param>
+    /// <param name="labels">Accepted labels for the field, colon included.</param>
+    /// <returns>Link texts in page order, without blanks or duplicates.</returns>
+    private static List<string> TextsAfterLabels(HtmlDocument doc, string[] labels)
+    {
+        var values = new List<string>();
+        foreach (var label in doc.DocumentNode.Descendants("span"))
+        {
+            if (!IsLabel(label, labels))
+            {
+                continue;
+            }
+
+            for (var node = label.NextSibling; node is not null; node = node.NextSibling)
+            {
+                if (node.NodeType != HtmlNodeType.Element)
+                {
+                    continue;
+                }
+
+                if (!node.Name.Equals("a", StringComparison.OrdinalIgnoreCase))
+                {
+                    break;
+                }
+
+                var value = node.InnerText.Trim();
+                if (value.Length > 0 && !values.Contains(value, StringComparer.OrdinalIgnoreCase))
+                {
+                    values.Add(value);
+                }
+            }
+
+            break;
+        }
+
+        return values;
+    }
+
+    /// <summary>Reports whether a span holds one of the given labels.</summary>
+    /// <param name="span">Candidate label element.</param>
+    /// <param name="labels">Accepted labels for the field, colon included.</param>
+    /// <returns><c>true</c> when the span's own text is one of the labels.</returns>
+    private static bool IsLabel(HtmlNode span, string[] labels)
+    {
+        var text = span.InnerText.Trim();
+        if (text.Length == 0 || span.ChildNodes.Any(n => n.NodeType == HtmlNodeType.Element))
+        {
+            // A label span holds text only; a span wrapping links is a value.
+            return false;
+        }
+
+        return labels.Any(l => text.Equals(l, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string ExtractCode(string? text)
@@ -127,10 +228,12 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
     }
 
 #if NET7_0_OR_GREATER
-    [GeneratedRegex(@"Release Date[^<]*<[^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:Release Date|発売日|配信開始日|發售日期|发售日期|發行日期|发行日期)[^<]*<[^>]*>[^0-9]*(\d{4}-\d{2}-\d{2})", RegexOptions.IgnoreCase)]
     private static partial Regex RegexDate();
 #else
-    private static readonly Regex RegexDateInstance = new(@"Release Date[^<]*<[^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RegexDateInstance = new(
+        @"(?:Release Date|発売日|配信開始日|發售日期|发售日期|發行日期|发行日期)[^<]*<[^>]*>[^0-9]*(\d{4}-\d{2}-\d{2})",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static Regex RegexDate() => RegexDateInstance;
 #endif

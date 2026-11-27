@@ -96,6 +96,21 @@ public sealed class JavVideo
     public int LanguageRetries { get; set; }
 
     /// <summary>
+    /// Gets or sets how many times this record has been re-scraped because it
+    /// carried no cast at all.
+    /// </summary>
+    /// <remarks>
+    /// A record with a title and cover but no performers looks complete to
+    /// the scan, so it was never fetched again and the library's actress
+    /// groups stayed empty. Re-scraping it is bounded here for the same
+    /// reason as <see cref="LanguageRetries"/>: some titles credit nobody on
+    /// any site, and an unbounded retry would spend a full multi-site scrape
+    /// on them every scan.
+    /// </remarks>
+    [JsonPropertyName("castRetries")]
+    public int CastRetries { get; set; }
+
+    /// <summary>
     /// Gets or sets the scene preview (screenshot) image URLs, offered as
     /// backdrop images.
     /// </summary>

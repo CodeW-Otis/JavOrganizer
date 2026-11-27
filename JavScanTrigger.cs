@@ -6,6 +6,7 @@ using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jellyfin.Plugin.JavOrganizer;
 
@@ -228,7 +229,7 @@ public sealed class JavScanTrigger
                 // what gets queued and, just as importantly, what does not.
                 var wantEnglish = Plugin.EffectiveConfiguration.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase);
                 pending = videos
-                    .Where(v => NeedsScrape(v.Item, v.Code, wantEnglish))
+                    .Where(v => NeedsScrape(v.Item, v.Code, wantEnglish, _logger))
                     .Select(v => v.Item)
                     .ToList();
 
@@ -329,6 +330,9 @@ public sealed class JavScanTrigger
     /// <list type="bullet">
     /// <item>never scraped by the plugin (no provider id),</item>
     /// <item>scraped so thinly that it shows no date and no cover,</item>
+    /// <item>scraped with a title and cover but no cast at all, while its
+    /// bounded cast-repair budget is unspent — such a record looks complete,
+    /// so nothing else would ever ask the sites for the performers again,</item>
     /// <item>missing genres, a studio or the overview, but only once its
     /// cached scrape has aged out — if the sites were asked recently and had
     /// no genres for the code, the cached record is still the answer and
@@ -338,14 +342,18 @@ public sealed class JavScanTrigger
     /// </list>
     /// Left alone: an item whose cached scrape is still within its TTL. That
     /// record is the authoritative answer for the code, whatever the item
-    /// currently shows, so it is never re-fetched until it ages out. The deep
-    /// pass is the explicit escape hatch that ignores all of this.
+    /// currently shows, so it is never re-fetched until it ages out — except
+    /// for the two bounded repairs above: a title that still needs the
+    /// configured language, and a record whose cast-repair budget is not yet
+    /// spent. The deep pass is the explicit escape hatch that ignores all of
+    /// this.
     /// </remarks>
     /// <param name="item">The library item.</param>
     /// <param name="code">The product code parsed from the item.</param>
     /// <param name="wantEnglish">Whether the plugin language is English.</param>
+    /// <param name="logger">Logger for cache diagnostics; <c>null</c> is fine.</param>
     /// <returns><c>true</c> when the item should be scraped now.</returns>
-    internal static bool NeedsScrape(BaseItem item, string code, bool wantEnglish)
+    internal static bool NeedsScrape(BaseItem item, string code, bool wantEnglish, ILogger? logger = null)
     {
         if (!item.ProviderIds.TryGetValue(JavMetadataProvider.ProviderIdKey, out _))
         {
@@ -363,8 +371,42 @@ public sealed class JavScanTrigger
             return true;
         }
 
+        if (IsCastRepairDue(code, logger))
+        {
+            return true;
+        }
+
         return IsSparselyScraped(item)
             && !JavCache.IsStillValid(JavCodeParser.Normalize(code));
+    }
+
+    /// <summary>
+    /// Reports whether the cached record for the code carries no cast even
+    /// though its bounded repair budget is unspent. Such a record has a
+    /// title, a cover and genres, so every other condition treats it as
+    /// complete and the item is never queued again — which is how a library
+    /// ends up with titles but no actress collections. The counter in the
+    /// record stops a title no site credits from being re-fetched forever.
+    /// </summary>
+    /// <param name="code">The product code parsed from the item.</param>
+    /// <param name="logger">Logger for cache diagnostics, or <c>null</c>.</param>
+    /// <returns><c>true</c> when the sites should be asked for the cast again.</returns>
+    private static bool IsCastRepairDue(string code, ILogger? logger)
+    {
+        var normalized = JavCodeParser.Normalize(code);
+        if (normalized.Length == 0)
+        {
+            return false;
+        }
+
+        var diagnostics = logger ?? NullLogger.Instance;
+
+        // A fresh not-found marker means the sites were asked recently and had
+        // nothing at all for the code, so queueing it again would only make the
+        // refresh re-read that marker. The repair resumes once it expires.
+        return !JavCache.IsRecentlyNotFound(normalized, diagnostics)
+            && JavCache.TryRead(normalized, diagnostics) is { } cached
+            && JavMetadataProvider.CastRepairPending(cached);
     }
 
     /// <summary>

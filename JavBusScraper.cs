@@ -10,18 +10,11 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// normally needs no Cloudflare solving at all — a fast, reliable source.
 /// </summary>
 /// <remarks>
-/// <para>
 /// JavBus lists female idols through star links; male actors are usually
 /// not credited, so members land in the unseparated cast list and a
 /// gender-aware site (JavDB, MissAV) refines them during the merge.
-/// </para>
-/// <para>
-/// A browser that has not answered the age gate sees an "Age Verification
-/// JavBus" page instead of the database, which is easy to mistake for a dead
-/// site. The <c>dv=1</c> cookie above skips that gate. Lookalike domains
-/// (javbus.sbs and friends) are unrelated streaming CMS installs with no
-/// per-code pages, so they are deliberately not used as alternates.
-/// </para>
+/// The age gate (<c>dv=1</c>) is why this domain never moves to a lookalike
+/// such as javbus.sbs — see the JavBus entry in README troubleshooting.
 /// </remarks>
 public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : SiteScraper(
         logger,
@@ -30,12 +23,7 @@ public sealed partial class JavBusScraper(ILogger logger, string lang = "en") : 
             : $"{SiteRoot}{lang}/",
         "dv=1")
 {
-    /// <summary>
-    /// The JavBus database host — the single place this site's domain is
-    /// written down. Requests, the absolute genre links the parser also
-    /// accepts, and every absolutized cover/preview URL all derive from it,
-    /// so a genuine domain move is a one-line change here.
-    /// </summary>
+    /// <summary>JavBus database root: requests, genre links and absolutized URLs derive from it.</summary>
     private const string SiteRoot = "https://www.javbus.com/";
 
     protected override string SiteName => "JavBus";

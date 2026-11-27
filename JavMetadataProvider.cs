@@ -13,7 +13,9 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// <see cref="PluginConfiguration.MaxSitesPerScrape"/> websites per code —
 /// ranked by priority, skipping banned and unreachable sites — merges the
 /// results, and caches them so each video is scraped once and refreshed
-/// only after the configured TTL (default 30 days).
+/// only after the configured TTL (default 30 days), apart from the two
+/// bounded repairs counted in the record: a title that still needs the
+/// configured language, and a substantive record with no cast.
 /// </summary>
 /// <remarks>
 /// <para>Jellyfin requires <c>TItemType : IHasLookupInfo&lt;TLookupInfoType&gt;</c>,
@@ -24,7 +26,10 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// entries, so library re-scans only query the sites for genuinely new files.
 /// Thin records — a scrape that produced only a title and nothing else — are
 /// re-scraped after a short grace period instead of being served from cache
-/// forever, which is what left some library items stuck at "title only".</para>
+/// forever, which is what left some library items stuck at "title only".
+/// A record that came back with a title and cover but no performers is
+/// re-scraped the same way, bounded by <see cref="MaxCastRetries"/>, because
+/// without cast the item can never join an actress collection.</para>
 /// </remarks>
 public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieInfo>
 {
@@ -42,6 +47,15 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// multi-site scrape on them on every scan forever.
     /// </summary>
     private const int MaxLanguageRetries = 3;
+
+    /// <summary>
+    /// How many times a castless record is re-scraped before the plugin
+    /// accepts that no site credits this title. One attempt is not enough:
+    /// the first repair can land while the cast-carrying sites (MissAV,
+    /// JavDB) are banned or disabled, and the second is what lets enabling
+    /// one of them heal the record.
+    /// </summary>
+    internal const int MaxCastRetries = 2;
 
     private readonly ILogger _logger;
 
@@ -427,10 +441,14 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             // substantive record with a Japanese-only title is re-scraped
             // right away (when the configured language is English) — the
             // six-hour thin grace must not apply to it, or a rescan would
-            // keep serving the Japanese title and change nothing. The
-            // bounded retry counter is what stops a title with no English
-            // release from being re-scraped on every scan forever.
+            // keep serving the Japanese title and change nothing. The same
+            // applies to a substantive record with no cast at all: it looks
+            // complete but cannot build actress collections, so the sites are
+            // asked again. The bounded retry counters are what stop a title
+            // with no English release, or one no site credits, from being
+            // re-scraped on every scan forever.
             var needsRetry = NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries;
+            var needsCastRepair = CastRepairPending(cached);
             if (ShouldServeCached(cached, JavCache.IsFreshFor(normalized, ThinRetryGrace)))
             {
                 _logger.LogDebug("Cache hit for '{Code}'", normalized);
@@ -444,6 +462,14 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
                     normalized,
                     cached.LanguageRetries + 1,
                     MaxLanguageRetries);
+            }
+            else if (needsCastRepair)
+            {
+                _logger.LogInformation(
+                    "Cached record for '{Code}' has no cast; re-scraping (attempt {Attempt} of {Max})",
+                    normalized,
+                    cached.CastRetries + 1,
+                    MaxCastRetries);
             }
             else
             {
@@ -468,9 +494,13 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             // only counts when JavLibrary was actually reached — a re-scrape
             // while it is banned had no chance at an English title and must
             // not spend the budget, or a ban would lock the Japanese title in.
+            // The cast-repair count carries forward the same way, and only
+            // counts when some site actually answered: a round where every
+            // site timed out could not have produced cast either.
             if (cached is not null)
             {
                 result.Video.LanguageRetries = NextLanguageRetries(cached, result.JavLibraryReached);
+                result.Video.CastRetries = NextCastRetries(cached, result.AnySiteReached);
             }
 
             JavCache.TryWrite(normalized, result.Video, _logger);
@@ -523,12 +553,13 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
     /// <summary>
     /// Decides whether a cached record may be served without touching the
-    /// network. A record whose title still needs the configured language is
-    /// always re-scraped, even when it is fresh and substantive: the user
-    /// expects a rescan to fix the title immediately, and the bounded
-    /// <see cref="MaxLanguageRetries"/> counter — not the thin-record grace
-    /// window — is what stops a title with no English release from being
-    /// retried forever. The six-hour grace applies only to thin records.
+    /// network. A record whose title still needs the configured language, or
+    /// which carries no cast at all, is re-scraped even when it is fresh and
+    /// substantive: the user expects a rescan to fix the title and the actor
+    /// associations immediately, and the bounded retry counters — not the
+    /// thin-record grace window — are what stop a title with no English
+    /// release, or one no site credits, from being retried forever. The
+    /// six-hour grace applies only to thin records.
     /// </summary>
     /// <param name="cached">The cached record.</param>
     /// <param name="withinThinGrace">Whether the record is still within the
@@ -537,6 +568,11 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     internal static bool ShouldServeCached(JavVideo cached, bool withinThinGrace)
     {
         if (NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries)
+        {
+            return false;
+        }
+
+        if (CastRepairPending(cached))
         {
             return false;
         }
@@ -559,6 +595,44 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// <returns>The retry count to carry into the fresh record.</returns>
     internal static int NextLanguageRetries(JavVideo cached, bool javLibraryReached)
         => cached.LanguageRetries + (NeedsLanguageRetry(cached) && javLibraryReached ? 1 : 0);
+
+    /// <summary>
+    /// Reports whether a record carries no cast at all — the state that
+    /// leaves an item with a title and a cover but nobody to group it under,
+    /// so the library shows no actress collections for it.
+    /// </summary>
+    /// <param name="video">The record to inspect.</param>
+    /// <returns><c>true</c> when neither actresses nor male actors are recorded.</returns>
+    internal static bool NeedsCastRepair(JavVideo video)
+        => video.Actresses.Count == 0 && video.MaleActors.Count == 0;
+
+    /// <summary>
+    /// Reports whether a record looks complete enough to be served as-is, yet
+    /// carries no cast and still has repair attempts left. Only substantive
+    /// records qualify: a thin record (title only) already has the six-hour
+    /// grace window to heal, and bypassing it for every title-only scrape
+    /// would hammer the sites on every scan.
+    /// </summary>
+    /// <param name="video">The cached record.</param>
+    /// <returns><c>true</c> when a re-scrape could still add cast to a record
+    /// that otherwise looks complete.</returns>
+    internal static bool CastRepairPending(JavVideo video)
+        => IsSubstantive(video)
+        && NeedsCastRepair(video)
+        && video.CastRetries < MaxCastRetries;
+
+    /// <summary>
+    /// Computes the cast-repair count to store after a re-scrape. The count
+    /// advances only when the cached record still had no cast <em>and</em> at
+    /// least one site genuinely answered: a round where every site timed out
+    /// or was banned could not have produced cast, so it must not consume the
+    /// bounded budget.
+    /// </summary>
+    /// <param name="cached">The previously cached record being replaced.</param>
+    /// <param name="anySiteReached">Whether any site answered this round.</param>
+    /// <returns>The retry count to carry into the fresh record.</returns>
+    internal static int NextCastRetries(JavVideo cached, bool anySiteReached)
+        => cached.CastRetries + (NeedsCastRepair(cached) && anySiteReached ? 1 : 0);
 
     /// <summary>
     /// Counts CJK (Japanese/Chinese) characters in a string.
