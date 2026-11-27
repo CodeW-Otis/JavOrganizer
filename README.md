@@ -58,7 +58,7 @@ JavOrganizer identifies Japanese adult video files by looking for the product co
 | What you get | How it works |
 |---|---|
 | 📝 **English titles** | The plugin prioritizes Latin-script text when merging data, so you get English titles when available. |
-| 👥 **Cast members** | Separates actresses and actors using data from sites like JavDB and MissAV, preferring romaji names. |
+| 👥 **Cast members** | Separates actresses and actors using data from sites like JavDB and MissAV, preferring romaji names. MissAV also recognizes Chinese/Japanese cast labels and all performers in each row. |
 | 🖼️ **Cover art & backdrops** | Downloads images directly using appropriate Referer headers so CDNs don't block the request. |
 | 🏷️ **Metadata** | Fills in studios, genres, release dates, and runtimes from whichever site has the info. |
 | 📚 **Collections** | Automatically groups videos by actress/actor, and generates "Most Viewed" or "Most Liked" lists. |
@@ -432,6 +432,22 @@ If you ever need to refresh just the images for an item, use the *Replace all me
 ## 💾 How metadata is cached
 
 Data is saved as JSON in `{data}/plugins/Jellyfin.Plugin.JavOrganizer/cache/`. By default, successful scrapes are kept for 30 days, and failed lookups are cached for 7 days.
+
+An otherwise usable record with no actresses **and** no actors is eligible
+for automatic cast repair on a normal plugin scan or metadata refresh.
+Repair waits at least six hours after the last cache write and makes at most
+three completed attempts for that cached record. Failed attempts keep the
+known metadata and also consume an attempt; cancellation leaves the record
+unchanged. A successful repair adds cast and portrait information while
+preserving the original title, cover and provider ID. Existing caches need
+no manual deletion, and either female or male credits stop further repairs.
+Normal cache expiration/cleanup or a deep re-scrape can start a new record
+and budget.
+
+For unattended recovery, ensure **Scan JavOrganizer Library** has an enabled
+trigger in Jellyfin's Scheduled Tasks. **Update JavOrganizer Collections**
+then uses the recovered credits on its next run, subject to the configured
+minimum titles per performer.
 
 If you delete the cache folder or run a Deep Re-scrape, it will force fresh network requests.
 

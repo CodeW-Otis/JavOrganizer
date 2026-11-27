@@ -745,6 +745,320 @@ foreach (var (pageCode, requested, expected, label) in new (string, string, bool
 Console.WriteLine("== FlareSolverr URL override (test harness seam) ==");
 Check(FlareSolverrUrls.UrlOverrideVariable.Length > 0, "the override variable is named");
 
+Console.WriteLine("== MissAV localized cast labels and multiple performers ==");
+foreach (var (femaleLabel, maleLabel) in new[]
+{
+    ("Actress:", "Actor:"),
+    ("女優:", "男優:"),
+    ("女优：", "男优："),
+    (" 女演員 : ", " 男演員 : "),
+    ("女演员:", "男演员:")
+})
+{
+    // The localized page has the same structure as the English page; only
+    // the labels change. Every linked performer must survive, not just [1].
+    var castHtml = $$"""
+        <span class="font-medium">ABC-123</span>
+        <h1 class="title">ABC-123 Sample title</h1>
+        <div><span>{{femaleLabel}}</span>
+          <a href="/actresses/a">Performer A</a>
+          <a href="/actresses/b">Performer B</a>
+        </div>
+        <div><span>{{maleLabel}}</span>
+          <a href="/actors/c">Performer C</a>
+          <a href="/actors/d">Performer D</a>
+        </div>
+        <div><span>Genre:</span><a href="/genres/drama">Drama</a></div>
+        """;
+    var castDoc = new HtmlDocument();
+    castDoc.LoadHtml(castHtml);
+    var castVideo = new MissAvScraper(new StubLogger(), "zh").ParseVideoPage(castDoc, castHtml);
+    Check(castVideo is not null, $"MissAV parses metadata with {femaleLabel}");
+    Check(castVideo?.Actresses.SequenceEqual(["Performer A", "Performer B"]) == true,
+        $"MissAV retains all actresses for {femaleLabel}");
+    Check(castVideo?.MaleActors.SequenceEqual(["Performer C", "Performer D"]) == true,
+        $"MissAV retains all male actors for {maleLabel}");
+}
+
+Console.WriteLine("== Missing cast is healed through both the provider and normal scan ==");
+var missingCast = new JavVideo
+{
+    Code = "ZZZ-913",
+    Title = "ZZZ-913 A complete title",
+    CoverUrl = "https://example.invalid/cover.jpg",
+    Genres = ["Drama"],
+    Maker = "Studio"
+};
+Check(JavMetadataProvider.ShouldServeCached(missingCast, withinThinGrace: true),
+    "a recent castless scrape is not retried immediately");
+Check(!JavMetadataProvider.ShouldServeCached(missingCast, withinThinGrace: false),
+    "a substantive castless scrape past the grace window is retried");
+var castRetryCode = JavCodeParser.Normalize(missingCast.Code);
+var castRetryFile = Path.Combine(JavCache.CacheDir, $"{castRetryCode}.json");
+try
+{
+    JavCache.TryWrite(castRetryCode, missingCast, new StubLogger());
+    var castlessMovie = MakeMovie(missingCast.Title, missingCast.Code, ["Drama"], ["Studio"], "Provider: JavOrganizer");
+    Check(!JavScanTrigger.NeedsScrape(castlessMovie, missingCast.Code, wantEnglish: false),
+        "normal scan leaves a recent castless cache alone");
+    File.SetLastWriteTimeUtc(castRetryFile, DateTime.UtcNow.AddHours(-7));
+    Check(JavScanTrigger.NeedsScrape(castlessMovie, missingCast.Code, wantEnglish: false),
+        "normal scan queues an otherwise complete item with old missing-cast data");
+}
+finally
+{
+    JavCache.Purge(castRetryCode);
+}
+
+Console.WriteLine("== Missing-cast retry budget and retained metadata ==");
+var castBudgetRecord = new JavVideo
+{
+    Code = "ZZZ-914",
+    VideoId = "original-id",
+    Title = "ZZZ-914 Original title",
+    CoverUrl = "https://example.invalid/original.jpg",
+    Maker = "Original studio",
+    LanguageRetries = 2
+};
+Check(castBudgetRecord.CastRetries == 0, "new records begin with an unused cast budget");
+var oldCastJson = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(
+    """{"code":"ZZZ-914","title":"Old cache","coverUrl":"https://example.invalid/c.jpg"}""")!;
+Check(oldCastJson.CastRetries == 0, "old JSON without castRetries remains eligible for repair");
+for (var attempt = 1; attempt <= 3; attempt++)
+{
+    Check(JavMetadataProvider.ShouldRetryMissingCast(castBudgetRecord, withinGrace: false),
+        $"cast retry {attempt} is due after the grace window");
+    castBudgetRecord = JavMetadataProvider.ApplyCastRetry(castBudgetRecord, null);
+    var serialized = System.Text.Json.JsonSerializer.Serialize(castBudgetRecord);
+    castBudgetRecord = System.Text.Json.JsonSerializer.Deserialize<JavVideo>(serialized)!;
+    Check(castBudgetRecord.CastRetries == attempt, $"cast retry {attempt} survives a cache rewrite");
+    Check(castBudgetRecord.Title == "ZZZ-914 Original title"
+        && castBudgetRecord.VideoId == "original-id"
+        && castBudgetRecord.CoverUrl == "https://example.invalid/original.jpg"
+        && castBudgetRecord.Maker == "Original studio",
+        $"failed attempt {attempt} keeps known metadata");
+    Check(castBudgetRecord.LanguageRetries == 2, "cast repair does not spend the language budget");
+    Check(JavMetadataProvider.ShouldServeCached(castBudgetRecord, withinThinGrace: true),
+        $"attempt {attempt} starts a cooldown");
+}
+Check(!JavMetadataProvider.ShouldRetryMissingCast(castBudgetRecord, withinGrace: false),
+    "a fourth automatic cast attempt is refused");
+Check(JavMetadataProvider.ShouldServeCached(castBudgetRecord, withinThinGrace: false),
+    "an exhausted cast budget accepts the retained metadata");
+var budgetCode = JavCodeParser.Normalize(castBudgetRecord.Code);
+try
+{
+    JavCache.TryWrite(budgetCode, castBudgetRecord, new StubLogger());
+    File.SetLastWriteTimeUtc(Path.Combine(JavCache.CacheDir, $"{budgetCode}.json"), DateTime.UtcNow.AddHours(-7));
+    Check(!JavScanTrigger.NeedsScrape(
+        MakeMovie(castBudgetRecord.Title, castBudgetRecord.Code, ["Drama"], ["Studio"], "Provider: JavOrganizer"),
+        castBudgetRecord.Code, wantEnglish: false),
+        "normal scan respects the persisted exhausted cast budget");
+}
+finally
+{
+    JavCache.Purge(budgetCode);
+}
+
+var recoveredCast = JavMetadataProvider.ApplyCastRetry(
+    new JavVideo
+    {
+        Code = "ZZZ-915", Title = "ZZZ-915 Original title",
+        VideoId = "original-id", CoverUrl = "https://example.invalid/original.jpg"
+    },
+    new JavVideo
+    {
+        Code = "ZZZ-915", Title = "ZZZ-915 Replacement title", VideoId = "different-site-id",
+        Actresses = ["Performer A", "Performer B"], MaleActors = ["Performer C"],
+        PersonImageUrls = { ["Performer A"] = "https://example.invalid/person.jpg" },
+        PersonImageNameHints = { ["Performer A"] = "portrait-a" },
+        CastStarIds = { ["Performer A"] = "star-a" }
+    });
+Check(recoveredCast.Actresses.SequenceEqual(["Performer A", "Performer B"])
+    && recoveredCast.MaleActors.SequenceEqual(["Performer C"]),
+    "a repair stores the recovered gender-separated cast");
+Check(recoveredCast.Title == "ZZZ-915 Original title" && recoveredCast.VideoId == "original-id",
+    "cast repair keeps the original title and provider identity");
+Check(recoveredCast.PersonImageUrls.ContainsKey("Performer A")
+    && recoveredCast.PersonImageNameHints.ContainsKey("Performer A")
+    && recoveredCast.CastStarIds.ContainsKey("Performer A"),
+    "recovered portrait metadata follows the cast");
+Check(!JavMetadataProvider.ShouldRetryMissingCast(recoveredCast, withinGrace: false),
+    "recovered cast ends retries");
+Check(!JavMetadataProvider.ShouldRetryMissingCast(
+    new JavVideo { MaleActors = ["Performer C"] }, withinGrace: false),
+    "male-only credits count as populated cast");
+Check(!JavMetadataProvider.ShouldRetryMissingCast(
+    new JavVideo { Title = "ZZZ-916" }, withinGrace: false),
+    "title-only records retain the existing thin-record policy");
+
+Console.WriteLine("== Automatic cast repair through GetMetadata and the disk cache ==");
+foreach (var outcome in new[] { "recovered", "transient", "not-found", "cancelled", "cancel-return", "expired" })
+{
+    using var cancellation = new CancellationTokenSource();
+    var pipelineCode = JavCodeParser.Normalize("ZZZ-917");
+    var pipelineFile = Path.Combine(JavCache.CacheDir, $"{pipelineCode}.json");
+    var calls = 0;
+    var provider = new JavMetadataProvider(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<JavMetadataProvider>.Instance,
+        (code, token) =>
+        {
+            calls++;
+            if (outcome == "cancelled")
+            {
+                throw new OperationCanceledException(token);
+            }
+            if (outcome == "cancel-return")
+            {
+                cancellation.Cancel();
+            }
+
+            JavVideo? scraped = outcome == "recovered"
+                ? new JavVideo
+                {
+                    Code = code, Title = "Replacement title", VideoId = "other-id",
+                    Actresses = ["Performer A"], MaleActors = ["Performer B"]
+                }
+                : null;
+            return Task.FromResult(new JavMetadataProvider.ScrapeOutcome(
+                scraped, AnySiteReached: outcome is "recovered" or "not-found"));
+        });
+    try
+    {
+        JavCache.TryWrite(pipelineCode, new JavVideo
+        {
+            Code = "ZZZ-917", Title = "ZZZ-917 Retained title", VideoId = "original-id",
+            CoverUrl = "https://example.invalid/old.jpg", Maker = "Studio", Genres = ["Drama"]
+        }, new StubLogger());
+        File.SetLastWriteTimeUtc(pipelineFile,
+            DateTime.UtcNow.AddHours(outcome == "expired" ? -1000 : -7));
+        var originalBytes = File.ReadAllText(pipelineFile);
+        var originalTime = File.GetLastWriteTimeUtc(pipelineFile);
+        try
+        {
+            var metadata = await provider.GetMetadata(
+                new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-917" }, cancellation.Token);
+            Check(outcome is not ("cancelled" or "cancel-return"), "cancelled repair propagates cancellation");
+            Check(metadata.HasMetadata && metadata.Item.Name == "ZZZ-917 Retained title",
+                $"{outcome}: provider retains existing metadata");
+            Check(metadata.Item.ProviderIds[JavMetadataProvider.ProviderIdKey] == "original-id",
+                $"{outcome}: provider keeps the original provider id");
+            Check(outcome != "recovered"
+                || metadata.People.Select(p => p.Name).SequenceEqual(["Performer A", "Performer B"]),
+                $"{outcome}: recovered cast is attached to Jellyfin metadata");
+            var saved = JavCache.TryRead(pipelineCode, new StubLogger());
+            Check(saved?.CastRetries == 1, $"{outcome}: completed attempt persists its budget");
+            Check(!JavCache.IsRecentlyNotFound(pipelineCode, new StubLogger()),
+                $"{outcome}: a known title is never replaced by a not-found marker");
+            await provider.GetMetadata(
+                new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-917" }, CancellationToken.None);
+            Check(calls == 1, $"{outcome}: another refresh in the cooldown does not scrape");
+        }
+        catch (OperationCanceledException) when (outcome is "cancelled" or "cancel-return")
+        {
+            Check(File.ReadAllText(pipelineFile) == originalBytes
+                && File.GetLastWriteTimeUtc(pipelineFile) == originalTime,
+                "cancellation leaves the cache and retry budget untouched");
+        }
+    }
+    finally
+    {
+        JavCache.Purge(pipelineCode);
+    }
+}
+
+Console.WriteLine("== Concurrent refreshes share one cast repair ==");
+var concurrentCode = JavCodeParser.Normalize("ZZZ-918");
+var firstCastRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var releaseCastRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var concurrentCastCalls = 0;
+async Task<JavMetadataProvider.ScrapeOutcome> ConcurrentCastScrape(string code, CancellationToken token)
+{
+    Interlocked.Increment(ref concurrentCastCalls);
+    firstCastRequest.TrySetResult(true);
+    await releaseCastRequest.Task.WaitAsync(token);
+    return new JavMetadataProvider.ScrapeOutcome(null, false);
+}
+
+try
+{
+    JavCache.TryWrite(concurrentCode, new JavVideo
+    {
+        Code = "ZZZ-918", Title = "ZZZ-918 Shared title",
+        CoverUrl = "https://example.invalid/old.jpg"
+    }, new StubLogger());
+    File.SetLastWriteTimeUtc(Path.Combine(JavCache.CacheDir, $"{concurrentCode}.json"), DateTime.UtcNow.AddHours(-7));
+    var firstProvider = new JavMetadataProvider(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<JavMetadataProvider>.Instance, ConcurrentCastScrape);
+    var secondProvider = new JavMetadataProvider(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<JavMetadataProvider>.Instance, ConcurrentCastScrape);
+    var firstRefresh = firstProvider.GetMetadata(
+        new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-918" }, CancellationToken.None);
+    await firstCastRequest.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    var secondRefresh = secondProvider.GetMetadata(
+        new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-0918" }, CancellationToken.None);
+    releaseCastRequest.TrySetResult(true);
+    await Task.WhenAll(firstRefresh, secondRefresh).WaitAsync(TimeSpan.FromSeconds(5));
+    Check(concurrentCastCalls == 1,
+        "simultaneous refreshes of equivalent codes do not bypass the cooldown");
+    Check(JavCache.TryRead(concurrentCode, new StubLogger())?.CastRetries == 1,
+        "the shared repair persists one completed attempt");
+}
+finally
+{
+    releaseCastRequest.TrySetResult(true);
+    JavCache.Purge(concurrentCode);
+}
+
+Console.WriteLine("== Deep cache purge waits for an in-flight repair ==");
+var deepRepairCode = JavCodeParser.Normalize("ZZZ-919");
+var repairStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var finishRepair = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var deepCalls = 0;
+var deepProvider = new JavMetadataProvider(
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<JavMetadataProvider>.Instance,
+    async (code, token) =>
+    {
+        if (Interlocked.Increment(ref deepCalls) == 1)
+        {
+            repairStarted.TrySetResult(true);
+            await finishRepair.Task.WaitAsync(token);
+            return new JavMetadataProvider.ScrapeOutcome(null, false);
+        }
+
+        return new JavMetadataProvider.ScrapeOutcome(new JavVideo
+        {
+            Code = code, Title = "ZZZ-919 Fresh title", Actresses = ["Performer A"]
+        }, true);
+    });
+try
+{
+    JavCache.TryWrite(deepRepairCode, new JavVideo
+    {
+        Code = "ZZZ-919", Title = "ZZZ-919 Old title", CastRetries = 2,
+        CoverUrl = "https://example.invalid/old.jpg"
+    }, new StubLogger());
+    File.SetLastWriteTimeUtc(Path.Combine(JavCache.CacheDir, $"{deepRepairCode}.json"), DateTime.UtcNow.AddHours(-7));
+    var pendingRepair = deepProvider.GetMetadata(
+        new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-919" }, CancellationToken.None);
+    await repairStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    var purge = JavMetadataProvider.PurgeCacheAsync(deepRepairCode, CancellationToken.None);
+    finishRepair.TrySetResult(true);
+    await pendingRepair.WaitAsync(TimeSpan.FromSeconds(5));
+    await purge.WaitAsync(TimeSpan.FromSeconds(5));
+    var deepMetadata = await deepProvider.GetMetadata(
+        new MediaBrowser.Controller.Providers.MovieInfo { Name = "ZZZ-919" }, CancellationToken.None);
+    Check(deepCalls == 2 && deepMetadata.Item.Name == "ZZZ-919 Fresh title",
+        "a deep refresh still fetches fresh metadata after an in-flight repair");
+    Check(JavCache.TryRead(deepRepairCode, new StubLogger())?.CastRetries == 0,
+        "a deep refresh resets the old cast retry budget");
+}
+finally
+{
+    finishRepair.TrySetResult(true);
+    JavCache.Purge(deepRepairCode);
+}
+
 Console.WriteLine("== Language-retry bound (regression: endless futile re-scrapes) ==");
 // A title with no English release anywhere is re-scraped across every
 // enabled site on each scan unless the retry count is bounded and carried
@@ -800,7 +1114,7 @@ var freshEnglish = new JavVideo { Code = "JUR-716", Title = "JUR-716 An English 
 Check(JavMetadataProvider.ShouldServeCached(freshEnglish, withinThinGrace: true),
     "a fresh English-titled record is served from cache");
 
-var spentJapanese = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg", LanguageRetries = 3 };
+var spentJapanese = new JavVideo { Code = "SDMF-010", Title = jpTitle, CoverUrl = "https://x/c.jpg", Actresses = ["Performer A"], LanguageRetries = 3 };
 Check(JavMetadataProvider.ShouldServeCached(spentJapanese, withinThinGrace: false),
     "a Japanese title that spent its retries is served instead of scraped forever");
 

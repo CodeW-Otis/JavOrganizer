@@ -6,8 +6,8 @@ namespace Jellyfin.Plugin.JavOrganizer;
 
 /// <summary>
 /// Scrapes missav.ws (and its mirror domains) for a given JAV product
-/// code. MissAV labels cast with explicit <c>Actress:</c> and <c>Actor:</c>
-/// fields, making it a reliable source for gender-separated credits; its
+/// code. MissAV labels cast with localized actress and actor fields,
+/// making it a source for gender-separated credits; its
 /// pages sit behind a Cloudflare challenge that the shared
 /// clearance-adopt mechanism handles automatically.
 /// </summary>
@@ -96,9 +96,14 @@ public sealed partial class MissAvScraper(ILogger logger, string lang = "en", st
             }
         }
 
-        // Gender-separated cast: explicit "Actress:" and "Actor:" labels.
-        video.Actresses = SelectTexts(doc, "//span[text()='Actress:']/following-sibling::a[1]");
-        video.MaleActors = SelectTexts(doc, "//span[text()='Actor:']/following-sibling::a[1]");
+        // The URL follows the configured language, so the labels do too.
+        // Normalize whitespace/colon variants and retain every credited
+        // performer in the row rather than only its first link.
+        const string castLabel = "translate(normalize-space(.), ' ：:', '')";
+        video.Actresses = SelectTexts(doc,
+            $"//span[{castLabel}='Actress' or {castLabel}='女優' or {castLabel}='女优' or {castLabel}='女演員' or {castLabel}='女演员']/following-sibling::a");
+        video.MaleActors = SelectTexts(doc,
+            $"//span[{castLabel}='Actor' or {castLabel}='男優' or {castLabel}='男优' or {castLabel}='男演員' or {castLabel}='男演员']/following-sibling::a");
 
         // Cast portraits (img title=name) feed the person image provider.
         CollectPersonImages(doc, video);

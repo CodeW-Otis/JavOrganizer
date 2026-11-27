@@ -12,8 +12,8 @@ namespace Jellyfin.Plugin.JavOrganizer;
 /// code found in their file name. It scrapes up to
 /// <see cref="PluginConfiguration.MaxSitesPerScrape"/> websites per code —
 /// ranked by priority, skipping banned and unreachable sites — merges the
-/// results, and caches them so each video is scraped once and refreshed
-/// only after the configured TTL (default 30 days).
+/// results, and caches them until the configured TTL (default 30 days),
+/// with bounded repair attempts for missing cast or a title-language gap.
 /// </summary>
 /// <remarks>
 /// <para>Jellyfin requires <c>TItemType : IHasLookupInfo&lt;TLookupInfoType&gt;</c>,
@@ -43,7 +43,21 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// </summary>
     private const int MaxLanguageRetries = 3;
 
+    /// <summary>
+    /// Minimum interval between automatic attempts to fill missing cast.
+    /// Both the scan and provider use this window against the cache age.
+    /// </summary>
+    internal static readonly TimeSpan CastRetryGrace = TimeSpan.FromHours(6);
+
+    private const int MaxCastRetries = 3;
+
+    // A bounded lock pool keeps equivalent-code refreshes from reading the
+    // same retry budget concurrently, including across provider instances.
+    private static readonly SemaphoreSlim[] CacheLocks =
+        Enumerable.Range(0, 256).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
     private readonly ILogger _logger;
+    private readonly Func<string, CancellationToken, Task<ScrapeOutcome>> _scrape;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JavMetadataProvider"/> class.
@@ -53,10 +67,23 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     {
         ArgumentNullException.ThrowIfNull(logger);
         _logger = logger;
+        _scrape = ScrapeAllSitesAsync;
 
         // All site selection happens per request through the factory, so
         // configuration saves (site toggles, language, delay, site cap)
         // take effect immediately without a server restart.
+    }
+
+    /// <summary>
+    /// Uses a supplied scrape operation so the cache/repair pipeline can be
+    /// exercised offline, including failures and cancellation.
+    /// </summary>
+    internal JavMetadataProvider(
+        ILogger<JavMetadataProvider> logger,
+        Func<string, CancellationToken, Task<ScrapeOutcome>> scrape)
+        : this(logger)
+    {
+        _scrape = scrape;
     }
 
     /// <summary>
@@ -417,27 +444,80 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             return null;
         }
 
-        var cached = JavCache.TryRead(normalized, _logger);
+        var gate = CacheLocks[(int)((uint)StringComparer.Ordinal.GetHashCode(normalized) % (uint)CacheLocks.Length)];
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await ReadOrScrapeAsync(code, normalized, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Invalidates a code for a deep scan after any in-flight refresh has
+    /// finished writing it. The following refresh then sees an empty cache
+    /// instead of a stale repair resurrecting the purged retry budget.
+    /// </summary>
+    internal static async Task PurgeCacheAsync(string code, CancellationToken ct)
+    {
+        var normalized = JavCodeParser.Normalize(code);
+        var gate = CacheLocks[(int)((uint)StringComparer.Ordinal.GetHashCode(normalized) % (uint)CacheLocks.Length)];
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            JavCache.Purge(normalized);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads and updates one cache entry while its lock is held, so a second
+    /// refresh observes the first one's cast and cooldown before requesting
+    /// more data.
+    /// </summary>
+    private async Task<JavVideo?> ReadOrScrapeAsync(string code, string normalized, CancellationToken ct)
+    {
+        // Read a repair candidate before the normal TTL reader can discard
+        // it. A short configured TTL must not erase its repair budget or
+        // its known metadata just before a failed cast-only retry.
+        var cached = JavCache.TryReadStaleForItem(code, null, _logger);
+        if (cached is null || !ShouldRetryMissingCast(cached, withinGrace: false))
+        {
+            cached = JavCache.TryRead(normalized, _logger);
+        }
+
+        var retryCast = false;
         if (cached is not null)
         {
-            // A substantive record is served from cache; a thin one (title
-            // only — the state that left items at "title only" forever) is
-            // re-scraped once its grace period passes, so later scans heal
-            // it when sites recover or more of them are enabled. A
-            // substantive record with a Japanese-only title is re-scraped
-            // right away (when the configured language is English) — the
-            // six-hour thin grace must not apply to it, or a rescan would
-            // keep serving the Japanese title and change nothing. The
-            // bounded retry counter is what stops a title with no English
-            // release from being re-scraped on every scan forever.
+            // Missing cast and thin records wait for the grace period.
+            // The existing language-retry policy takes precedence: it may
+            // upgrade a Japanese title immediately when English is wanted.
             var needsRetry = NeedsLanguageRetry(cached) && cached.LanguageRetries < MaxLanguageRetries;
-            if (ShouldServeCached(cached, JavCache.IsFreshFor(normalized, ThinRetryGrace)))
+            var withinGrace = JavCache.IsFreshFor(normalized, ThinRetryGrace);
+            retryCast = !needsRetry
+                && ShouldRetryMissingCast(cached, JavCache.IsFreshFor(normalized, CastRetryGrace));
+            if (ShouldServeCached(cached, withinGrace))
             {
                 _logger.LogDebug("Cache hit for '{Code}'", normalized);
                 return cached;
             }
 
-            if (needsRetry)
+            if (retryCast)
+            {
+                _logger.LogInformation(
+                    "Cached cast for '{Code}' is empty; re-scraping (attempt {Attempt} of {Max})",
+                    normalized,
+                    cached.CastRetries + 1,
+                    MaxCastRetries);
+            }
+            else if (needsRetry)
             {
                 _logger.LogInformation(
                     "Cached title for '{Code}' is not in the configured language; re-scraping (attempt {Attempt} of {Max})",
@@ -453,13 +533,26 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
 
         // Skip the sites entirely when the code was recently looked up and
         // nothing was found, so repeated library scans stay cheap.
-        if (JavCache.IsRecentlyNotFound(normalized, _logger))
+        if (cached is null && JavCache.IsRecentlyNotFound(normalized, _logger))
         {
             _logger.LogDebug("Negative cache hit for '{Code}'; skipping scrape", normalized);
             return null;
         }
 
-        var result = await ScrapeAllSitesAsync(code, ct).ConfigureAwait(false);
+        var result = await _scrape(code, ct).ConfigureAwait(false);
+        // Some site adapters return null when cancellation interrupts HTTP
+        // or browser requests. Do not count those as completed attempts.
+        ct.ThrowIfCancellationRequested();
+        if (retryCast && cached is not null)
+        {
+            // This repair only fills cast. Keep the known title, provider id,
+            // cover and other metadata even if every source is unavailable
+            // or returns less information than the original scrape.
+            var repaired = ApplyCastRetry(cached, result.Video);
+            JavCache.TryWrite(normalized, repaired, _logger);
+            return repaired;
+        }
+
         if (result.Video is not null)
         {
             // Carry the language-retry count forward so the bound actually
@@ -471,6 +564,7 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             if (cached is not null)
             {
                 result.Video.LanguageRetries = NextLanguageRetries(cached, result.JavLibraryReached);
+                result.Video.CastRetries = cached.CastRetries;
             }
 
             JavCache.TryWrite(normalized, result.Video, _logger);
@@ -504,6 +598,56 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
         || video.RuntimeMinutes is not null;
 
     /// <summary>
+    /// Reports whether a substantive record with no cast is due for one of
+    /// its bounded repair attempts. Either gender counts as valid cast.
+    /// Thin records retain their existing retry policy.
+    /// </summary>
+    /// <param name="cached">Previously scraped metadata.</param>
+    /// <param name="withinGrace">Whether it was written within the retry interval.</param>
+    /// <returns>Whether the missing cast should be retried now.</returns>
+    internal static bool ShouldRetryMissingCast(JavVideo cached, bool withinGrace) =>
+        !withinGrace
+        && cached.CastRetries < MaxCastRetries
+        && cached.Actresses.Count == 0
+        && cached.MaleActors.Count == 0
+        && IsSubstantive(cached);
+
+    /// <summary>
+    /// Applies the outcome of a cast repair without replacing known metadata.
+    /// A completed attempt always consumes budget, including a failed round;
+    /// writing the retained record starts the next cooldown. Cancellation
+    /// never reaches this method.
+    /// </summary>
+    /// <param name="cached">Record being repaired.</param>
+    /// <param name="scraped">Fresh result, or null when no site returned data.</param>
+    /// <returns>The retained record with any recovered cast and updated budget.</returns>
+    internal static JavVideo ApplyCastRetry(JavVideo cached, JavVideo? scraped)
+    {
+        cached.CastRetries = Math.Clamp(cached.CastRetries, 0, MaxCastRetries - 1) + 1;
+        if (scraped is not null)
+        {
+            cached.Actresses = [.. scraped.Actresses];
+            cached.MaleActors = [.. scraped.MaleActors];
+            foreach (var (name, url) in scraped.PersonImageUrls)
+            {
+                cached.PersonImageUrls.TryAdd(name, url);
+            }
+
+            foreach (var (name, hint) in scraped.PersonImageNameHints)
+            {
+                cached.PersonImageNameHints.TryAdd(name, hint);
+            }
+
+            foreach (var (name, id) in scraped.CastStarIds)
+            {
+                cached.CastStarIds.TryAdd(name, id);
+            }
+        }
+
+        return cached;
+    }
+
+    /// <summary>
     /// Reports whether a cached record's title is in a different script
     /// than the configured language requests (e.g. a Japanese title while
     /// the plugin language is English), meaning one re-scrape could
@@ -528,7 +672,7 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// expects a rescan to fix the title immediately, and the bounded
     /// <see cref="MaxLanguageRetries"/> counter — not the thin-record grace
     /// window — is what stops a title with no English release from being
-    /// retried forever. The six-hour grace applies only to thin records.
+    /// retried forever. Missing cast has its own bounded six-hour retry.
     /// </summary>
     /// <param name="cached">The cached record.</param>
     /// <param name="withinThinGrace">Whether the record is still within the
@@ -541,7 +685,8 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
             return false;
         }
 
-        return IsSubstantive(cached) || withinThinGrace;
+        return !ShouldRetryMissingCast(cached, withinThinGrace)
+            && (IsSubstantive(cached) || withinThinGrace);
     }
 
     /// <summary>
@@ -591,7 +736,7 @@ public sealed class JavMetadataProvider : IRemoteMetadataProvider<Movie, MovieIn
     /// <param name="AnySiteReached"><c>true</c> when at least one site answered.</param>
     /// <param name="JavLibraryReached"><c>true</c> when JavLibrary — the primary
     /// English-title source — genuinely answered (not banned or blocked away).</param>
-    private readonly record struct ScrapeOutcome(JavVideo? Video, bool AnySiteReached, bool JavLibraryReached = false);
+    internal readonly record struct ScrapeOutcome(JavVideo? Video, bool AnySiteReached, bool JavLibraryReached = false);
 
     /// <summary>
     /// Scrapes every enabled site for the code — up to the configured

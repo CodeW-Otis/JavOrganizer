@@ -96,6 +96,15 @@ public sealed class JavVideo
     public int LanguageRetries { get; set; }
 
     /// <summary>
+    /// Gets or sets the number of automatic attempts to fill missing cast.
+    /// Older cache records default to zero. Completed attempts are bounded
+    /// even when sites fail, so titles without published credits do not
+    /// cause endless background requests.
+    /// </summary>
+    [JsonPropertyName("castRetries")]
+    public int CastRetries { get; set; }
+
+    /// <summary>
     /// Gets or sets the scene preview (screenshot) image URLs, offered as
     /// backdrop images.
     /// </summary>

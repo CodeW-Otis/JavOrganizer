@@ -333,13 +333,14 @@ public sealed class JavScanTrigger
     /// cached scrape has aged out — if the sites were asked recently and had
     /// no genres for the code, the cached record is still the answer and
     /// queueing again would re-scrape already-fetched metadata,</item>
+    /// <item>missing all cast in an otherwise substantive cached scrape,
+    /// after a six-hour cooldown and within the three-attempt budget,</item>
     /// <item>titled in Japanese while the plugin language is English, so one
     /// refresh can upgrade it (bounded by the provider's retry counter).</item>
     /// </list>
-    /// Left alone: an item whose cached scrape is still within its TTL. That
-    /// record is the authoritative answer for the code, whatever the item
-    /// currently shows, so it is never re-fetched until it ages out. The deep
-    /// pass is the explicit escape hatch that ignores all of this.
+    /// Other cached records remain authoritative until they age out. A
+    /// cast repair that exhausted its budget is also left alone. The deep
+    /// pass remains the explicit escape hatch that ignores all of this.
     /// </remarks>
     /// <param name="item">The library item.</param>
     /// <param name="code">The product code parsed from the item.</param>
@@ -359,6 +360,19 @@ public sealed class JavScanTrigger
         }
 
         if (wantEnglish && IsJapaneseTitled(item))
+        {
+            return true;
+        }
+
+        // Cast is stored separately from BaseItem metadata. Inspect the
+        // scrape cache so a complete-looking title/cover does not hide
+        // missing credits, and share the provider's cooldown/budget.
+        var cached = JavCache.TryReadStaleForItem(
+            code, null, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        if (cached is not null
+            && JavMetadataProvider.ShouldRetryMissingCast(
+                cached,
+                JavCache.IsFreshFor(JavCodeParser.Normalize(code), JavMetadataProvider.CastRetryGrace)))
         {
             return true;
         }
@@ -493,7 +507,7 @@ public sealed class JavScanTrigger
                     && codesByItem.TryGetValue(item.Id, out var deepCode)
                     && deepCode.Length > 0)
                 {
-                    JavCache.Purge(deepCode);
+                    await JavMetadataProvider.PurgeCacheAsync(deepCode, ct).ConfigureAwait(false);
                 }
 
                 await item.RefreshMetadata(options, ct).ConfigureAwait(false);
